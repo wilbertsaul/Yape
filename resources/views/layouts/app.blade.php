@@ -29,6 +29,14 @@
         .input-mobile {
             font-size: 16px;
         }
+        .bg-yape {
+            background-color: #6C2BD9 !important;
+            color: white !important;
+        }
+        .bg-yape-enviado {
+            background-color: #572364 !important;
+            color: white !important;
+        }
         @media (max-width: 768px) {
             .container-fluid {
                 padding: 10px;
@@ -71,6 +79,16 @@
                         <li class="nav-item">
                             <a class="nav-link" href="{{ route('historial') }}">
                                 <i class="bi bi-clock-history"></i> Historial
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ route('boletas.pendientes') }}">
+                                <i class="bi bi-receipt"></i> Boletas
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ route('clientes.index') }}">
+                                <i class="bi bi-person-lines-fill"></i> Clientes
                             </a>
                         </li>
                         <li class="nav-item">

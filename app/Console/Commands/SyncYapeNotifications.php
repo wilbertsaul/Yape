@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 class SyncYapeNotifications extends Command
 {
     protected $signature = 'sync:yape {--force : Forzar sincronización completa}';
-    protected $description = 'Sincroniza notificaciones de Yape desde Gmail';
+    protected $description = 'Sincroniza notificaciones de Yape/BCP desde Gmail';
 
     private GmailService $gmailService;
     private YapeNotificationParser $parser;
@@ -25,7 +25,7 @@ class SyncYapeNotifications extends Command
 
     public function handle(): int
     {
-        $this->info('Iniciando sincronización de notificaciones de Yape...');
+        $this->info('Iniciando sincronización de notificaciones BCP...');
 
         if (!$this->gmailService->isAuthenticated()) {
             $this->error('No hay token de autorización. Ejecuta la autorización desde el dashboard.');
@@ -37,26 +37,30 @@ class SyncYapeNotifications extends Command
             $this->info('Conectado a Gmail correctamente.');
 
             $lastSync = $this->getLastSyncDate();
-            $afterDate = $this->option('force') ? null : $lastSync;
 
-            $emails = $this->gmailService->getEmailsFromSender(
-                $this->parser->getSenderEmail(),
-                $afterDate
+            $forceMode = $this->option('force');
+
+            if ($forceMode) {
+                $this->info("Modo force: eliminando registros sincronizados anteriores...");
+                Transaccion::where('synced_from_email', true)->delete();
+                $this->info("Registros eliminados. Re-sincronizando desde cero.");
+            }
+
+            $emails = $this->gmailService->getEmailsFromSenders(
+                $this->parser->getSenderEmails(),
+                $forceMode ? null : $lastSync
             );
 
-            $this->info("Encontrados " . count($emails) . " emails de Yape/BCP.");
+            $this->info("Encontrados " . count($emails) . " emails de BCP.");
 
             $nuevos = 0;
             $duplicados = 0;
             $errores = 0;
-            $noYape = 0;
+            $sinClasificar = 0;
 
             $contador = 0;
             foreach ($emails as $email) {
                 $contador++;
-                if ($contador > 50) {
-                    $this->info("Procesados $contador emails, encontrado $nuevos nuevos...");
-                }
                 
                 try {
                     $messageId = $email->getId();
@@ -73,35 +77,28 @@ class SyncYapeNotifications extends Command
                         continue;
                     }
 
-                    if (!$this->parser->isYapeNotification($body)) {
-                        $noYape++;
-                        continue;
-                    }
-
                     $data = $this->parser->parseEmail($body);
 
                     if (!$data) {
-                        $errores++;
+                        $sinClasificar++;
                         continue;
                     }
 
                     if ($data['numero_operacion'] && $this->parser->existsOperation($data['numero_operacion'])) {
-                        Log::info("Operation {$data['numero_operacion']} already exists in DB, skipping");
                         $duplicados++;
                         continue;
                     }
 
-                    Log::info("Saving transaction for operation: {$data['numero_operacion']}");
-
                     $data['email_message_id'] = $messageId;
-                    Transaccion::registrarDesdeEmail($data);
-                    
-                    Log::info("Transaction saved successfully");
+                    $tx = Transaccion::registrarDesdeEmail($data);
+                    $tx->asignarClienteYComision();
                     
                     $this->gmailService->markAsRead($messageId);
                     $nuevos++;
 
-                    $this->line("  ✓ Op: {$data['numero_operacion']} - S/{$data['monto']} - {$data['remitente_nombre']}");
+                    $tipoLabel = $data['tipo_movimiento'] ?? '?';
+                    $nombre = $data['remitente_nombre'] ?? '-';
+                    $this->line("  ✓ [{$tipoLabel}] Op: {$data['numero_operacion']} - S/{$data['monto']} - {$nombre}");
 
                 } catch (\Exception $e) {
                     Log::error("Error procesando email " . ($email->getId() ?? 'unknown') . ": " . $e->getMessage());
@@ -115,7 +112,7 @@ class SyncYapeNotifications extends Command
             $this->info("=== RESUMEN ===");
             $this->info("Nuevos registros: $nuevos");
             $this->info("Duplicados omitidos: $duplicados");
-            $this->info("No eran Yape: $noYape");
+            $this->info("No clasificados: $sinClasificar");
             $this->info("Errores: $errores");
 
             return Command::SUCCESS;

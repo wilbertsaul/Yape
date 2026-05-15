@@ -6,7 +6,6 @@ use App\Models\Transaccion;
 use App\Models\SaldoInicial;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 class TransaccionController extends Controller
 {
@@ -26,14 +25,9 @@ class TransaccionController extends Controller
             ];
         }
 
-        $totalYape = Transaccion::where('tipo_movimiento', 'registro_yape')
-            ->sum('monto_transferencia');
-        $totalTraslados = Transaccion::where('tipo_movimiento', 'traslado_fondos')
-            ->sum('monto_transferencia');
-
         return [
-            'saldo_yape' => $ultimoSaldo->saldo_yape + $totalYape - $totalTraslados,
-            'saldo_secundario' => $ultimoSaldo->saldo_secundario + $totalTraslados - $totalYape,
+            'saldo_yape' => $ultimoSaldo->saldo_yape,
+            'saldo_secundario' => $ultimoSaldo->saldo_secundario,
         ];
     }
 
@@ -46,67 +40,25 @@ class TransaccionController extends Controller
             ->limit(50)
             ->get();
 
-        return view('dashboard', compact('saldos', 'transacciones'));
-    }
+        $boletasPendientes = Transaccion::where('tipo_movimiento', 'yape_recibido')
+            ->where('boleta_emitida', false)
+            ->count();
 
-    public function store(Request $request)
-    {
-        $request->validate([
-            'dni_cliente' => 'required|string|size:8',
-            'monto_transferencia' => 'required|numeric|min:0.01',
-        ]);
+        $comisiones = Transaccion::whereNotNull('comision')->where('comision', '>', 0);
+        $totalComisiones = (float) $comisiones->sum('comision');
+        $comisionesPendientes = (float) Transaccion::where('tipo_movimiento', 'yape_recibido')
+            ->where('boleta_emitida', false)
+            ->whereNotNull('comision')
+            ->sum('comision');
+        $comisionesEmitidas = (float) Transaccion::where('tipo_movimiento', 'yape_recibido')
+            ->where('boleta_emitida', true)
+            ->whereNotNull('comision')
+            ->sum('comision');
 
-        $saldos = $this->obtenerSaldosActuales();
-        $monto = floatval($request->monto_transferencia);
-
-        if ($saldos['saldo_yape'] < $monto) {
-            return back()->with('error', 'Saldo insuficiente en Cuenta Yape. Debe realizar un traslado desde la Cuenta Secundaria.');
-        }
-
-        try {
-            DB::transaction(function () use ($request, $saldos, $monto) {
-                Transaccion::registrarYape(
-                    Auth::id(),
-                    $request->dni_cliente,
-                    $monto,
-                    $saldos['saldo_yape'] - $monto,
-                    $saldos['saldo_secundario']
-                );
-            });
-
-            return redirect()->route('dashboard')->with('success', 'Transacción registrada exitosamente.');
-        } catch (\Exception $e) {
-            return back()->with('error', 'Error al registrar la transacción.');
-        }
-    }
-
-    public function traslado(Request $request)
-    {
-        $request->validate([
-            'monto_traslado' => 'required|numeric|min:0.01',
-        ]);
-
-        $saldos = $this->obtenerSaldosActuales();
-        $monto = floatval($request->monto_traslado);
-
-        if ($saldos['saldo_secundario'] < $monto) {
-            return back()->with('error', 'Saldo insuficiente en Cuenta Secundaria.');
-        }
-
-        try {
-            DB::transaction(function () use ($saldos, $monto) {
-                Transaccion::registrarTraslado(
-                    Auth::id(),
-                    $monto,
-                    $saldos['saldo_yape'] + $monto,
-                    $saldos['saldo_secundario'] - $monto
-                );
-            });
-
-            return redirect()->route('dashboard')->with('success', 'Traslado de fondos realizado exitosamente.');
-        } catch (\Exception $e) {
-            return back()->with('error', 'Error al realizar el traslado.');
-        }
+        return view('dashboard', compact(
+            'saldos', 'transacciones', 'boletasPendientes',
+            'totalComisiones', 'comisionesPendientes', 'comisionesEmitidas'
+        ));
     }
 
     public function historial()

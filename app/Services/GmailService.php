@@ -5,6 +5,7 @@ namespace App\Services;
 use Google\Client;
 use Google\Service\Gmail;
 use Google\Service\Gmail\ModifyMessageRequest;
+use Illuminate\Support\Facades\Log;
 
 class GmailService
 {
@@ -77,9 +78,19 @@ class GmailService
 
     public function getEmailsFromSender(string $sender, ?string $afterDate = null): array
     {
+        return $this->getEmailsFromSenders([$sender], $afterDate);
+    }
+
+    public function getEmailsFromSenders(array $senders, ?string $afterDate = null): array
+    {
         $this->authenticate();
-        
-        $query = "from:{$sender}";
+
+        $parts = [];
+        foreach ($senders as $s) {
+            $parts[] = "from:{$s}";
+        }
+        $query = implode(' OR ', $parts);
+
         if ($afterDate) {
             $query .= " after:{$afterDate}";
         }
@@ -107,18 +118,32 @@ class GmailService
 
     public function getEmailBody(string $messageId): ?string
     {
-        try {
-            $message = $this->gmail->users_messages->get('me', $messageId, [
-                'format' => 'raw'
-            ]);
-            
-            $rawData = $message->getRaw();
-            $decoded = base64_decode(strtr($rawData, '-_', '+/'));
-            
-            return $decoded;
-        } catch (\Exception $e) {
-            return null;
+        $attempts = 0;
+        $maxAttempts = 2;
+
+        while ($attempts < $maxAttempts) {
+            try {
+                $message = $this->getGmail()->users_messages->get('me', $messageId, [
+                    'format' => 'raw'
+                ]);
+
+                $rawData = $message->getRaw();
+                $decoded = base64_decode(strtr($rawData, '-_', '+/'));
+
+                return $decoded;
+            } catch (\Exception $e) {
+                $attempts++;
+                Log::warning("GmailService getEmailBody attempt $attempts/$maxAttempts failed for $messageId: " . $e->getMessage());
+                if ($attempts >= $maxAttempts) {
+                    Log::error("GmailService getEmailBody failed for $messageId after $maxAttempts attempts");
+                    return null;
+                }
+                usleep(500000);
+                $this->authenticate();
+            }
         }
+
+        return null;
     }
 
     public function markAsRead(string $messageId): void
@@ -126,9 +151,9 @@ class GmailService
         try {
             $modifyRequest = new ModifyMessageRequest();
             $modifyRequest->setRemoveLabelIds(['UNREAD']);
-            $this->gmail->users_messages->modify('me', $messageId, $modifyRequest);
+            $this->getGmail()->users_messages->modify('me', $messageId, $modifyRequest);
         } catch (\Exception $e) {
-            // Silently fail
+            Log::warning("GmailService markAsRead failed for $messageId: " . $e->getMessage());
         }
     }
 }
