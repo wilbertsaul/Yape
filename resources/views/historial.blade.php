@@ -25,11 +25,7 @@
                         <th>Monto</th>
                         <th>Comisión</th>
                         <th>Boleta</th>
-                        <th>Saldo Yape</th>
-                        <th>Saldo Secundario</th>
-                        @if(Auth::user()->isAdmin())
-                        <th>Acciones</th>
-                        @endif
+                        <th>Fec. Emisión</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -63,34 +59,23 @@
                             @endif
                         </td>
                         <td>
-                            @if($t->tipo_movimiento == 'yape_recibido')
-                                @if($t->boleta_emitida)
-                                    <span class="badge bg-success"><i class="bi bi-check"></i> Emitida</span>
-                                @else
-                                    <span class="badge bg-warning text-dark"><i class="bi bi-clock"></i> Pendiente</span>
-                                @endif
+                            @if($t->boleta_emitida && $t->boleta_serie && $t->boleta_numero)
+                                <span class="badge bg-primary">{{ $t->boleta_serie }}-{{ str_pad($t->boleta_numero, 4, '0', STR_PAD_LEFT) }}</span>
                             @else
                                 -
                             @endif
                         </td>
-                        <td>S/ {{ number_format($t->saldo_yape_momento, 2) }}</td>
-                        <td>S/ {{ number_format($t->saldo_secundaria_momento, 2) }}</td>
-                        @if(Auth::user()->isAdmin())
                         <td>
-                            <form action="{{ route('transaccion.destroy', $t->id) }}" method="POST" class="d-inline">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-sm btn-outline-danger" 
-                                        onclick="return confirm('¿Eliminar esta transacción?')">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </form>
+                            @if($t->boleta_emitida_at)
+                                {{ $t->boleta_emitida_at->format('d/m/Y H:i') }}
+                            @else
+                                -
+                            @endif
                         </td>
-                        @endif
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="{{ Auth::user()->isAdmin() ? 11 : 10 }}" class="text-center text-muted py-4">
+                        <td colspan="9" class="text-center text-muted py-4">
                             No hay transacciones registradas
                         </td>
                     </tr>

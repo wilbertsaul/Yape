@@ -24,7 +24,8 @@ class GmailAuthController extends Controller
         ]);
         $client->setAuthConfig($this->credentialsPath);
         $client->setAccessType('offline');
-        $client->setRedirectUri('http://127.0.0.1:8000/gmail/callback');
+        $client->setPrompt('consent');
+        $client->setRedirectUri('http://localhost:8000/gmail/callback');
 
         $authUrl = $client->createAuthUrl();
         
@@ -48,7 +49,8 @@ class GmailAuthController extends Controller
             ]);
             $client->setAuthConfig($this->credentialsPath);
             $client->setAccessType('offline');
-            $client->setRedirectUri('http://127.0.0.1:8000/gmail/callback');
+            $client->setPrompt('consent');
+            $client->setRedirectUri('http://localhost:8000/gmail/callback');
 
             $accessToken = $client->fetchAccessTokenWithAuthCode($code);
             

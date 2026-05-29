@@ -35,6 +35,20 @@ class Transaccion extends Model
         'cliente_id',
         'boleta_emitida',
         'boleta_emitida_at',
+        'boleta_serie',
+        'boleta_numero',
+        'boleta_xml_url',
+        'boleta_pdf_url',
+        'boleta_cdr_url',
+        'boleta_estado_sunat',
+        'boleta_hash',
+        'boleta_respuesta_raw',
+        'boleta_ticket',
+        'boleta_xml_path',
+        'boleta_cdr_path',
+        'boleta_cdr_code',
+        'boleta_cdr_notes',
+        'boleta_enviada_at',
     ];
 
     protected $casts = [
@@ -48,6 +62,9 @@ class Transaccion extends Model
         'synced_at' => 'datetime',
         'boleta_emitida' => 'boolean',
         'boleta_emitida_at' => 'datetime',
+        'boleta_numero' => 'integer',
+        'boleta_respuesta_raw' => 'array',
+        'boleta_enviada_at' => 'datetime',
     ];
 
     public function cliente()

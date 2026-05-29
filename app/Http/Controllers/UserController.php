@@ -6,18 +6,13 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth');
-        $this->middleware(function ($request, $next) {
-            if (!Auth::user()->isAdmin()) {
-                return redirect()->route('dashboard')->with('error', 'No tiene acceso a esta sección.');
-            }
-            return $next($request);
-        });
+        $this->middleware(['auth', 'admin']);
     }
 
     public function index()

@@ -42,4 +42,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/boletas/emitidas', [BoletaController::class, 'emitidas'])->name('boletas.emitidas');
     Route::post('/boletas/{id}/marcar-emitida', [BoletaController::class, 'marcarEmitida'])->name('boletas.marcar-emitida');
     Route::post('/boletas/{id}/actualizar-comision', [BoletaController::class, 'actualizarComision'])->name('boletas.actualizar-comision');
+    Route::post('/boletas/emitir-lote', [BoletaController::class, 'emitirLote'])->name('boletas.emitir-lote');
+    Route::post('/boletas/enviar-sunat', [BoletaController::class, 'enviarSunat'])->name('boletas.enviar-sunat');
+    Route::post('/boletas/{id}/enviar-individual', [BoletaController::class, 'enviarIndividualSunat'])->name('boletas.enviar-individual');
+    Route::get('/sunat/download/{type}/{filename}', [BoletaController::class, 'downloadSunatFile'])->name('sunat.download');
+    Route::post('/boletas/consultar-sunat', [BoletaController::class, 'consultarSunat'])->name('boletas.consultar-sunat');
+    Route::post('/boletas/{id}/reintentar', [BoletaController::class, 'reintentarBoleta'])->name('boletas.reintentar');
+    Route::post('/boletas/{id}/anular', [BoletaController::class, 'anularBoleta'])->name('boletas.anular');
+    Route::post('/boletas/{id}/consultar-anulacion', [BoletaController::class, 'consultarAnulacion'])->name('boletas.consultar-anulacion');
+    Route::post('/boletas/{id}/editar-dni', [BoletaController::class, 'editarDni'])->name('boletas.editar-dni');
 });

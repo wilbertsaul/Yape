@@ -43,6 +43,7 @@ class SyncYapeNotifications extends Command
             if ($forceMode) {
                 $this->info("Modo force: eliminando registros sincronizados anteriores...");
                 Transaccion::where('synced_from_email', true)->delete();
+                $this->saveLastSyncDate('');
                 $this->info("Registros eliminados. Re-sincronizando desde cero.");
             }
 
