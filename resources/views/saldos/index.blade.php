@@ -77,7 +77,7 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm mb-0">
+            <table class="table table-sm mb-0 table-card-list">
                 <thead>
                     <tr>
                         <th>Fecha</th>
@@ -88,9 +88,18 @@
                 <tbody>
                     @foreach($saldos as $saldo)
                     <tr>
-                        <td>{{ $saldo->fecha_actualizacion->format('d/m/Y') }}</td>
-                        <td>S/ {{ number_format($saldo->saldo_yape, 2) }}</td>
-                        <td>S/ {{ number_format($saldo->saldo_secundario, 2) }}</td>
+                        <td>
+                            <span class="cell-label">Fecha</span>
+                            {{ $saldo->fecha_actualizacion->format('d/m/Y') }}
+                        </td>
+                        <td>
+                            <span class="cell-label">Saldo Yape</span>
+                            S/ {{ number_format($saldo->saldo_yape, 2) }}
+                        </td>
+                        <td>
+                            <span class="cell-label">Saldo Secundaria</span>
+                            S/ {{ number_format($saldo->saldo_secundario, 2) }}
+                        </td>
                     </tr>
                     @endforeach
                 </tbody>
@@ -101,7 +110,7 @@
 @endif
 
 <div class="mt-3">
-    <a href="{{ route('dashboard') }}" class="btn btn-outline-secondary">
+    <a href="{{ route('dashboard') }}" class="btn btn-outline-secondary mobile-full">
         <i class="bi bi-arrow-left"></i> Volver al Dashboard
     </a>
 </div>

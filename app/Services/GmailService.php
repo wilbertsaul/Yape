@@ -29,7 +29,7 @@ class GmailService
         $this->client->setAuthConfig($this->credentialsPath);
         $this->client->setAccessType('offline');
         $this->client->setPrompt('consent');
-        $this->client->setRedirectUri('http://localhost:8000/gmail/callback');
+        $this->client->setRedirectUri(config('app.url') . '/gmail/callback');
         $this->loadToken();
         
         if ($this->client->isAccessTokenExpired()) {

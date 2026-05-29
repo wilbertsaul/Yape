@@ -1,14 +1,12 @@
 @extends('layouts.app')
 
-@section('title', 'Gestión de Usuarios')
+@section('title', 'Gestion de Usuarios')
 
 @section('content')
-<div class="row">
-    <div class="col-12 mb-3">
-        <h4 class="text-primary">
-            <i class="bi bi-people"></i> Gestión de Usuarios
-        </h4>
-    </div>
+<div class="page-heading">
+    <h4 class="text-primary">
+        <i class="bi bi-people"></i> Gestion de Usuarios
+    </h4>
 </div>
 
 <div class="card shadow-sm mb-4">
@@ -23,15 +21,15 @@
                 <input type="text" class="form-control" id="name" name="name" required>
             </div>
             <div class="col-12 col-md-6">
-                <label for="email" class="form-label">Correo Electrónico</label>
+                <label for="email" class="form-label">Correo Electronico</label>
                 <input type="email" class="form-control" id="email" name="email" required>
             </div>
             <div class="col-12 col-md-6">
-                <label for="password" class="form-label">Contraseña</label>
+                <label for="password" class="form-label">Contrasena</label>
                 <input type="password" class="form-control" id="password" name="password" required minlength="8">
             </div>
             <div class="col-12 col-md-6">
-                <label for="password_confirmation" class="form-label">Confirmar Contraseña</label>
+                <label for="password_confirmation" class="form-label">Confirmar Contrasena</label>
                 <input type="password" class="form-control" id="password_confirmation" name="password_confirmation" required>
             </div>
             <div class="col-12 col-md-6">
@@ -42,7 +40,7 @@
                 </select>
             </div>
             <div class="col-12">
-                <button type="submit" class="btn btn-yape">
+                <button type="submit" class="btn btn-yape mobile-full">
                     <i class="bi bi-save"></i> Crear Usuario
                 </button>
             </div>
@@ -56,7 +54,7 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover mb-0">
+            <table class="table table-hover mb-0 table-card-list">
                 <thead class="table-light">
                     <tr>
                         <th>Nombre</th>
@@ -69,34 +67,47 @@
                 <tbody>
                     @forelse($users as $user)
                     <tr>
-                        <td>{{ $user->name }}</td>
-                        <td>{{ $user->email }}</td>
+                        <td class="text-break-mobile">
+                            <span class="cell-label">Nombre</span>
+                            {{ $user->name }}
+                        </td>
+                        <td class="text-break-mobile">
+                            <span class="cell-label">Email</span>
+                            {{ $user->email }}
+                        </td>
                         <td>
+                            <span class="cell-label">Rol</span>
                             @if($user->role === 'admin')
                                 <span class="badge bg-danger">Admin</span>
                             @else
                                 <span class="badge bg-secondary">Empleado</span>
                             @endif
                         </td>
-                        <td>{{ $user->created_at->format('d/m/Y') }}</td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal{{ $user->id }}">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            @if($user->id !== Auth::user()->id)
-                            <form action="{{ route('users.destroy', $user->id) }}" method="POST" class="d-inline">
-                                @csrf
-                                @method('DELETE')
-                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar usuario?')">
-                                    <i class="bi bi-trash"></i>
+                            <span class="cell-label">Creado</span>
+                            {{ $user->created_at->format('d/m/Y') }}
+                        </td>
+                        <td>
+                            <span class="cell-label">Acciones</span>
+                            <div class="mobile-actions">
+                                <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal{{ $user->id }}">
+                                    <i class="bi bi-pencil"></i> Editar
                                 </button>
-                            </form>
-                            @endif
+                                @if($user->id !== Auth::user()->id)
+                                <form action="{{ route('users.destroy', $user->id) }}" method="POST" class="d-inline">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Eliminar usuario?')">
+                                        <i class="bi bi-trash"></i> Eliminar
+                                    </button>
+                                </form>
+                                @endif
+                            </div>
                         </td>
                     </tr>
 
                     <div class="modal fade" id="editModal{{ $user->id }}" tabindex="-1">
-                        <div class="modal-dialog">
+                        <div class="modal-dialog modal-dialog-scrollable">
                             <div class="modal-content">
                                 <div class="modal-header">
                                     <h5 class="modal-title">Editar Usuario</h5>
@@ -115,7 +126,7 @@
                                             <input type="email" class="form-control" name="email" value="{{ $user->email }}" required>
                                         </div>
                                         <div class="mb-3">
-                                            <label class="form-label">Nueva Contraseña (dejar en blanco)</label>
+                                            <label class="form-label">Nueva Contrasena (dejar en blanco)</label>
                                             <input type="password" class="form-control" name="password">
                                         </div>
                                         <div class="mb-3">
@@ -126,7 +137,7 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="modal-footer">
+                                    <div class="modal-footer mobile-stack">
                                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                                         <button type="submit" class="btn btn-yape">Guardar Cambios</button>
                                     </div>
@@ -136,7 +147,7 @@
                     </div>
                     @empty
                     <tr>
-                        <td colspan="5" class="text-center text-muted">No hay usuarios</td>
+                        <td colspan="5" class="text-center text-muted py-4">No hay usuarios</td>
                     </tr>
                     @endforelse
                 </tbody>
@@ -146,7 +157,7 @@
 </div>
 
 <div class="mt-3">
-    <a href="{{ route('dashboard') }}" class="btn btn-outline-secondary">
+    <a href="{{ route('dashboard') }}" class="btn btn-outline-secondary mobile-full">
         <i class="bi bi-arrow-left"></i> Volver al Dashboard
     </a>
 </div>

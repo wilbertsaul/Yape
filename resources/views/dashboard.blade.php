@@ -72,7 +72,7 @@
 @if($boletasPendientes > 0)
 <div class="row mt-3">
     <div class="col-12">
-        <div class="alert alert-warning d-flex align-items-center justify-content-between">
+        <div class="alert alert-warning d-flex align-items-center justify-content-between gap-2 mobile-stack">
             <div>
                 <i class="bi bi-receipt"></i>
                 <strong>{{ $boletasPendientes }} boleta(s) pendiente(s) por emitir</strong>
@@ -121,7 +121,7 @@
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0">
+                    <table class="table table-hover mb-0 table-card-list">
                         <thead class="table-light">
                             <tr>
                                 <th>Fecha</th>
@@ -135,8 +135,12 @@
                         <tbody>
                             @forelse($transacciones as $t)
                             <tr>
-                                <td>{{ $t->fecha_hora->format('d/m H:i') }}</td>
                                 <td>
+                                    <span class="cell-label">Fecha</span>
+                                    {{ $t->fecha_hora->format('d/m H:i') }}
+                                </td>
+                                <td>
+                                    <span class="cell-label">Tipo</span>
                                     @if($t->tipo_movimiento == 'yape_enviado' || $t->tipo_movimiento == 'registro_yape')
                                         <span class="badge bg-yape-enviado">Yape Enviado</span>
                                     @elseif($t->tipo_movimiento == 'yape_recibido')
@@ -149,12 +153,20 @@
                                         <span class="badge bg-secondary">{{ $t->tipo_movimiento }}</span>
                                     @endif
                                 </td>
-                                <td>{{ $t->remitente_nombre ?? '-' }}</td>
-                                <td>{{ $t->dni_cliente }}</td>
+                                <td class="text-break-mobile">
+                                    <span class="cell-label">Cliente</span>
+                                    {{ $t->remitente_nombre ?? '-' }}
+                                </td>
+                                <td>
+                                    <span class="cell-label">DNI</span>
+                                    {{ $t->dni_cliente }}
+                                </td>
                                 <td class="{{ in_array($t->tipo_movimiento, ['yape_enviado', 'registro_yape', 'transferencia_terceros']) ? 'text-danger' : 'text-success' }}">
+                                    <span class="cell-label">Monto</span>
                                     {{ in_array($t->tipo_movimiento, ['yape_enviado', 'registro_yape', 'transferencia_terceros']) ? '-' : '+' }}S/ {{ number_format($t->monto_transferencia, 2) }}
                                 </td>
                                 <td>
+                                    <span class="cell-label">ComisiÃ³n</span>
                                     @if($t->comision !== null)
                                         S/ {{ number_format($t->comision, 2) }}
                                     @else
@@ -172,7 +184,7 @@
                 </div>
             </div>
             <div class="card-footer">
-                <a href="{{ route('historial') }}" class="btn btn-sm btn-outline-primary">
+                <a href="{{ route('historial') }}" class="btn btn-sm btn-outline-primary mobile-full">
                     Ver todo el historial <i class="bi bi-arrow-right"></i>
                 </a>
             </div>
