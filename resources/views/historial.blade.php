@@ -24,9 +24,7 @@
                         <th>Monto</th>
                         <th>ComisiÃ³n</th>
                         <th>Boleta</th>
-                        @if(Auth::user()->isAdmin())
-                            <th>Acciones</th>
-                        @endif
+                        <th>Fec. Emisión</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -54,7 +52,7 @@
                         <td class="text-break-mobile">
                             <span class="cell-label">Remitente / Op.</span>
                             <div class="fw-semibold">{{ $tx->remitente_nombre ?? 'Sin nombre' }}</div>
-                            <small class="text-muted">Op: {{ $tx->numero_operacion }}</small>
+                            <small class="text-muted">Op: {{ $tx->nro_operacion ?? '-' }}</small>
                         </td>
                         <td class="fw-bold">
                             <span class="cell-label">Monto</span>
@@ -78,24 +76,18 @@
                                 <span class="badge bg-warning text-dark">Pendiente</span>
                             @endif
                         </td>
-                        @if(Auth::user()->isAdmin())
                         <td>
-                            <span class="cell-label">Acciones</span>
-                            <div class="mobile-actions">
-                                <form action="{{ route('transaccion.destroy', $tx->id) }}" method="POST" onsubmit="return confirm('Â¿EstÃ¡ seguro de eliminar esta transacciÃ³n?')">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                        <i class="bi bi-trash"></i> Eliminar
-                                    </button>
-                                </form>
-                            </div>
+                            <span class="cell-label">Fec. Emisión</span>
+                            @if($tx->boleta_emitida_at)
+                                <span class="fw-semibold">{{ $tx->boleta_emitida_at->format('d/m/Y') }}</span>
+                            @else
+                                <span class="text-muted">-</span>
+                            @endif
                         </td>
-                        @endif
                     </tr>
                     @empty
                     <tr>
-                        <td colspan="{{ Auth::user()->isAdmin() ? 7 : 6 }}" class="text-center text-muted py-4">
+                        <td colspan="7" class="text-center text-muted py-4">
                             No hay transacciones registradas.
                         </td>
                     </tr>

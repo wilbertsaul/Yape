@@ -57,7 +57,29 @@ class GmailService
     public function isAuthenticated(): bool
     {
         $tokenFile = storage_path('app/gmail_token.json');
-        return file_exists($tokenFile);
+        if (!file_exists($tokenFile)) {
+            return false;
+        }
+
+        try {
+            $client = new Client();
+            $client->setAuthConfig($this->credentialsPath);
+            $token = json_decode(file_get_contents($tokenFile), true);
+            $client->setAccessToken($token);
+
+            if ($client->isAccessTokenExpired()) {
+                if (!$client->getRefreshToken()) {
+                    return false;
+                }
+                $client->fetchAccessTokenWithRefreshToken($client->getRefreshToken());
+                $newToken = $client->getAccessToken();
+                file_put_contents($tokenFile, json_encode($newToken));
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            return false;
+        }
     }
 
     private function refreshToken(): void

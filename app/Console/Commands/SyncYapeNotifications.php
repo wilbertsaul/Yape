@@ -37,20 +37,21 @@ class SyncYapeNotifications extends Command
             $this->info('Conectado a Gmail correctamente.');
 
             $lastSync = $this->getLastSyncDate();
-
             $forceMode = $this->option('force');
 
+            // Primero obtener los emails (esto verifica que la API funciona)
+            $emails = $this->gmailService->getEmailsFromSenders(
+                $this->parser->getSenderEmails(),
+                $forceMode ? null : $lastSync
+            );
+
+            // Solo después de confirmar la conexión, eliminar registros en modo force
             if ($forceMode) {
                 $this->info("Modo force: eliminando registros sincronizados anteriores...");
                 Transaccion::where('synced_from_email', true)->delete();
                 $this->saveLastSyncDate('');
                 $this->info("Registros eliminados. Re-sincronizando desde cero.");
             }
-
-            $emails = $this->gmailService->getEmailsFromSenders(
-                $this->parser->getSenderEmails(),
-                $forceMode ? null : $lastSync
-            );
 
             $this->info("Encontrados " . count($emails) . " emails de BCP.");
 
