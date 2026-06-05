@@ -15,6 +15,9 @@ class SyncController extends Controller
 
     public function manual(Request $request)
     {
+        set_time_limit(0);
+        ignore_user_abort(true);
+
         $force = $request->has('force');
 
         if (!$force) {
