@@ -16,7 +16,7 @@ class BoletaDataBuilder
 {
     public function build(Transaccion $transaccion, int $correlativo, ?string $serieOverride = null, ?int $correlativoOverride = null): Invoice
     {
-        $monto = (float) ($transaccion->comision ?? $transaccion->monto_transferencia);
+        $monto = (float) ($transaccion->comision ?? 0);
         $serie = $serieOverride ?? config('sunat.serie', 'EB01');
         $correlativoStr = $correlativoOverride ? (string) $correlativoOverride : (string) $correlativo;
 

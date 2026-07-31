@@ -35,7 +35,7 @@ class BoletaController extends Controller
         $transacciones = Transaccion::with('cliente')
             ->where('boleta_emitida', true)
             ->where('tipo_movimiento', '!=', 'traslado_fondos')
-            ->orderBy('boleta_emitida_at', 'desc')
+            ->orderBy('boleta_numero', 'desc')
             ->paginate(20);
 
         return view('boletas.emitidas', compact('transacciones'));
@@ -71,6 +71,15 @@ class BoletaController extends Controller
         if ($request->has('comision')) {
             $request->validate(['comision' => 'required|numeric|min:0']);
             $tx->comision = floatval($request->comision);
+        }
+
+        if (!$tx->comision || $tx->comision <= 0) {
+            return back()->with('error', 'Debe establecer una comisión antes de emitir la boleta.');
+        }
+
+        $maxComision = config('sunat.comision_max', 10);
+        if ($tx->comision > $maxComision) {
+            return back()->with('error', "La comisión (S/{$tx->comision}) supera el máximo permitido de S/{$maxComision}.");
         }
 
         $serie = config('sunat.serie', 'EB01');
@@ -145,13 +154,19 @@ class BoletaController extends Controller
                 $ticketCorrelativo = 'RC-' . str_replace('-', '', $fecha);
                 $correlativo = $this->getNextSummaryCorrelativo($ticketCorrelativo);
 
-                $items = $grupo->map(fn($b) => [
+                $maxComision = config('sunat.comision_max', 10);
+                $items = $grupo->filter(fn($b) => ($b->comision ?? 0) > 0 && ($b->comision ?? 0) <= $maxComision)
+                    ->map(fn($b) => [
                     'serie' => $b->boleta_serie ?? $serie,
                     'numero' => (string) $b->boleta_numero,
-                    'monto' => (float) ($b->comision ?? $b->monto_transferencia),
+                    'monto' => (float) ($b->comision ?? 0),
                     'cliente_tipo' => $generico ? '0' : ($b->cliente && $b->cliente->dni ? '1' : '0'),
                     'cliente_nro' => $generico ? '0' : ($b->cliente && $b->cliente->dni ? $b->cliente->dni : '0'),
                 ])->toArray();
+
+                if (empty($items)) {
+                    continue;
+                }
 
                 $result = $sender->enviarResumen($items, $correlativo, $fecha);
 
@@ -274,7 +289,7 @@ class BoletaController extends Controller
             return back()->with('error', 'Esta transacción no tiene una boleta emitida.');
         }
 
-        $monto = (float) ($tx->comision ?? $tx->monto_transferencia);
+        $monto = (float) ($tx->comision ?? 0);
         $docId = $tx->boleta_serie . '-' . $tx->boleta_numero;
 
         try {
@@ -713,11 +728,20 @@ class BoletaController extends Controller
         $serie = config('sunat.serie', 'EB01');
         $correlativo = CorrelativoBoleta::firstOrCreate(['serie' => $serie]);
 
+        $maxComision = config('sunat.comision_max', 10);
         $count = 0;
         $numeros = [];
         $errores = [];
         $exitos = [];
         foreach ($transacciones as $tx) {
+            if (!$tx->comision || $tx->comision <= 0) {
+                $errores[] = "ID {$tx->id} (sin comisión definida)";
+                continue;
+            }
+            if ($tx->comision > $maxComision) {
+                $errores[] = "ID {$tx->id} (comisión S/{$tx->comision} supera tope S/{$maxComision})";
+                continue;
+            }
             $correlativo->increment('ultimo_numero');
             $correlativo->refresh();
 

@@ -117,6 +117,17 @@
                                         <i class="bi bi-file-zip"></i> CDR
                                     </a>
                                 @endif
+                                @if(str_starts_with($t->boleta_ticket ?? '', 'NC:'))
+                                    @php
+                                        $ncRef = substr($t->boleta_ticket, 3);
+                                    @endphp
+                                    <a href="{{ route('sunat.download', ['type' => 'xml', 'filename' => 'NC-' . $ncRef . '.xml']) }}" class="btn btn-sm btn-outline-secondary" title="NC XML">
+                                        <i class="bi bi-filetype-xml"></i> NC-XML
+                                    </a>
+                                    <a href="{{ route('sunat.download', ['type' => 'cdr', 'filename' => 'R-NC-' . $ncRef . '.zip']) }}" class="btn btn-sm btn-outline-info" title="NC CDR">
+                                        <i class="bi bi-file-zip"></i> NC-CDR
+                                    </a>
+                                @endif
                                 @if(!$t->boleta_xml_path && !$t->boleta_cdr_path && !$t->boleta_ticket)
                                     <form method="POST" action="{{ route('boletas.enviar-individual', $t->id) }}" class="d-inline">
                                         @csrf
@@ -141,7 +152,7 @@
                                         </button>
                                     </form>
                                 @endif
-                                @if($t->boleta_estado_sunat === 'ANULADO' && !str_starts_with($t->boleta_ticket ?? '', 'NC:'))
+                                @if($t->boleta_estado_sunat === 'ANULADO' && $t->boleta_ticket && !str_starts_with($t->boleta_ticket, 'NC:'))
                                     <form method="POST" action="{{ route('boletas.consultar-anulacion', $t->id) }}" class="d-inline">
                                         @csrf
                                         <button type="submit" class="btn btn-sm btn-outline-warning" title="Consultar estado de anulacion en SUNAT">

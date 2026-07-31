@@ -24,4 +24,6 @@ return [
 
     'usuario_sol_sec' => env('SUNAT_USUARIO_SOL_SEC', env('SUNAT_USUARIO_SOL', '')),
     'clave_sol_sec' => env('SUNAT_CLAVE_SOL_SEC', env('SUNAT_CLAVE_SOL', '')),
+
+    'comision_max' => env('SUNAT_COMISION_MAX', 10),
 ];

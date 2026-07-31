@@ -25,6 +25,8 @@ class SyncYapeNotifications extends Command
 
     public function handle(): int
     {
+        set_time_limit(0);
+
         $this->info('Iniciando sincronización de notificaciones BCP...');
 
         if (!$this->gmailService->isAuthenticated()) {
@@ -38,6 +40,11 @@ class SyncYapeNotifications extends Command
 
             $lastSync = $this->getLastSyncDate();
             $forceMode = $this->option('force');
+
+            // En fresh deploy sin archivo, solo sincronizar desde ayer
+            if (!$forceMode && $lastSync === null) {
+                $lastSync = now()->subDay()->format('Y/m/d');
+            }
 
             // Primero obtener los emails (esto verifica que la API funciona)
             $emails = $this->gmailService->getEmailsFromSenders(
@@ -130,7 +137,8 @@ class SyncYapeNotifications extends Command
     {
         $file = storage_path('app/last_yape_sync.txt');
         if (file_exists($file)) {
-            return trim(file_get_contents($file));
+            $content = trim(file_get_contents($file));
+            return $content === '' ? null : $content;
         }
         return null;
     }
@@ -138,6 +146,12 @@ class SyncYapeNotifications extends Command
     private function saveLastSyncDate($date): void
     {
         $file = storage_path('app/last_yape_sync.txt');
+        if ($date === '' || $date === null) {
+            if (file_exists($file)) {
+                unlink($file);
+            }
+            return;
+        }
         file_put_contents($file, $date);
     }
 }

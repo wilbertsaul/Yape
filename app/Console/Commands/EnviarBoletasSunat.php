@@ -51,13 +51,20 @@ class EnviarBoletasSunat extends Command
             $correlativo = $this->getNextSummaryCorrelativo($ticketCorrelativo);
 
             $generico = $this->option('generico');
-            $items = $grupo->map(fn($b) => [
+            $maxComision = config('sunat.comision_max', 10);
+            $items = $grupo->filter(fn($b) => ($b->comision ?? 0) > 0 && ($b->comision ?? 0) <= $maxComision)
+                ->map(fn($b) => [
                 'serie' => $b->boleta_serie ?? $serie,
                 'numero' => (string) $b->boleta_numero,
-                'monto' => (float) ($b->comision ?? $b->monto_transferencia),
+                'monto' => (float) ($b->comision ?? 0),
                 'cliente_tipo' => $generico ? '0' : ($b->cliente && $b->cliente->dni ? '1' : '0'),
                 'cliente_nro' => $generico ? '0' : ($b->cliente && $b->cliente->dni ? $b->cliente->dni : '0'),
             ])->toArray();
+
+            if (empty($items)) {
+                $this->warn("Fecha {$fecha}: sin boletas válidas (comision fuera de rango o no definida)");
+                continue;
+            }
 
             $this->output->write('  Enviando a SUNAT... ');
 
