@@ -49,6 +49,8 @@ class Transaccion extends Model
         'boleta_cdr_code',
         'boleta_cdr_notes',
         'boleta_enviada_at',
+        'boleta_nc_xml_path',
+        'boleta_nc_cdr_path',
     ];
 
     protected $casts = [

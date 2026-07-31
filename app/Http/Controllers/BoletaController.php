@@ -394,8 +394,8 @@ class BoletaController extends Controller
                 'boleta_ticket' => 'NC:' . $ncSerie . '-' . $correlativo->ultimo_numero,
                 'boleta_cdr_code' => (string) $cdrCode,
                 'boleta_cdr_notes' => $cdrDesc,
-                'boleta_cdr_path' => $cdrPath,
-                'boleta_xml_path' => $xmlPath,
+                'boleta_nc_xml_path' => $xmlPath,
+                'boleta_nc_cdr_path' => $cdrPath,
                 'boleta_enviada_at' => now(),
             ]);
 

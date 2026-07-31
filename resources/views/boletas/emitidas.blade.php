@@ -117,14 +117,13 @@
                                         <i class="bi bi-file-zip"></i> CDR
                                     </a>
                                 @endif
-                                @if(str_starts_with($t->boleta_ticket ?? '', 'NC:'))
-                                    @php
-                                        $ncRef = substr($t->boleta_ticket, 3);
-                                    @endphp
-                                    <a href="{{ route('sunat.download', ['type' => 'xml', 'filename' => 'NC-' . $ncRef . '.xml']) }}" class="btn btn-sm btn-outline-secondary" title="NC XML">
+                                @if($t->boleta_nc_xml_path)
+                                    <a href="{{ route('sunat.download', ['type' => 'xml', 'filename' => basename($t->boleta_nc_xml_path)]) }}" class="btn btn-sm btn-outline-secondary" title="NC XML">
                                         <i class="bi bi-filetype-xml"></i> NC-XML
                                     </a>
-                                    <a href="{{ route('sunat.download', ['type' => 'cdr', 'filename' => 'R-NC-' . $ncRef . '.zip']) }}" class="btn btn-sm btn-outline-info" title="NC CDR">
+                                @endif
+                                @if($t->boleta_nc_cdr_path)
+                                    <a href="{{ route('sunat.download', ['type' => 'cdr', 'filename' => basename($t->boleta_nc_cdr_path)]) }}" class="btn btn-sm btn-outline-info" title="NC CDR">
                                         <i class="bi bi-file-zip"></i> NC-CDR
                                     </a>
                                 @endif
