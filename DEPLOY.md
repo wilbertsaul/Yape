@@ -244,9 +244,21 @@ docker exec -w /var/www/AlToque altoque_app php artisan storage:link
 
 ## 8. Nginx compartido y HTTPS
 
-Añadir **solo tres líneas** al servicio `web`:
+Añadir **solo tres líneas** al servicio `web`. **Primero** dejar el vhost HTTP temporal: el definitivo referencia un certificado que aún no existe y haría fallar `nginx -t` al recrear el nginx compartido.
 
 ```bash
+cd /var/www/AlToque/docker/nginx
+cp altoque.conf altoque.conf.https
+cat > altoque.conf <<'EOF'
+server {
+    listen 80;
+    server_name altoque.jemigra.com;
+
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://$host$request_uri; }
+}
+EOF
+
 cd /var/www/jemigra
 python3 - <<'PY'
 from pathlib import Path
@@ -268,26 +280,11 @@ mkdir -p /var/www/certbot
 docker compose up -d --force-recreate web                    # SOLO web
 docker exec jemigra_web nginx -t || {
   cp "$BK/jemigra-docker-compose.yml" /var/www/jemigra/docker-compose.yml
+  cp "$BK/jemigra-default.conf" /var/www/jemigra/docker/nginx/default.conf
+  mv -f /var/www/AlToque/docker/nginx/altoque.conf.https /var/www/AlToque/docker/nginx/altoque.conf
   docker compose up -d --force-recreate web
   echo 'ROLLBACK nginx aplicado'; exit 1
 }
-```
-
-Vhost HTTP temporal para el challenge ACME (el definitivo referencia un certificado que aún no existe):
-
-```bash
-cd /var/www/AlToque/docker/nginx
-cp altoque.conf altoque.conf.https
-cat > altoque.conf <<'EOF'
-server {
-    listen 80;
-    server_name altoque.jemigra.com;
-
-    location /.well-known/acme-challenge/ { root /var/www/certbot; }
-    location / { return 301 https://$host$request_uri; }
-}
-EOF
-docker exec jemigra_web nginx -t && docker exec jemigra_web nginx -s reload
 ```
 
 Certificado:
@@ -304,7 +301,7 @@ docker run --rm \
 Restaurar HTTPS y validar:
 
 ```bash
-cp /var/www/AlToque/docker/nginx/altoque.conf.https /var/www/AlToque/docker/nginx/altoque.conf
+mv -f /var/www/AlToque/docker/nginx/altoque.conf.https /var/www/AlToque/docker/nginx/altoque.conf
 docker exec jemigra_web nginx -t && docker exec jemigra_web nginx -s reload
 curl -I https://altoque.jemigra.com
 curl -sS -o /dev/null -w 'login=%{http_code}\n' https://altoque.jemigra.com/login
