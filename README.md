@@ -1,59 +1,105 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# AlToque — Sincronización Yape y facturación SUNAT
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Aplicación Laravel 12 que:
 
-## About Laravel
+- Importa notificaciones de Yape/BCP desde Gmail y las convierte en transacciones.
+- Mantiene historial, saldos, clientes y usuarios.
+- Emite boletas electrónicas y notas de crédito a SUNAT (greenter/lite).
+- Permite descargar XML/CDR de boletas y de notas de crédito desde la UI.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Requisitos
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- PHP 8.2 o superior
+- Composer 2
+- MySQL
+- Node.js y npm (para compilar los assets)
+- Credenciales OAuth de Gmail API
+- Certificado digital SUNAT en formato `.pfx`
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Instalación
 
-## Learning Laravel
+```bash
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+npm install
+npm run build
+php artisan serve
+```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+También existe `composer setup`, que hace la instalación completa (incluye `migrate --force`). Revisa `.env` antes de usarlo: el ejemplo trae valores de producción.
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Configuración
 
-## Laravel Sponsors
+### Base de datos
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+`DB_CONNECTION`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`.
 
-### Premium Partners
+### Gmail
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+- Coloca el OAuth client de Google en `credentials.json` en la raíz del proyecto.
+- Configura `APP_URL` con la URL pública, porque el `redirect_uri` se deriva de ahí (`/gmail/callback`).
+- Tras autorizar con `/gmail/redirect`, el token queda en `storage/app/gmail_token.json`.
 
-## Contributing
+Estos archivos están ignorados por Git: `.env`, `credentials.json`, `token.json`, `storage/app/gmail_token.json`.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### SUNAT
 
-## Code of Conduct
+Variables principales en `.env`:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+| Variable | Uso |
+|---|---|
+| `SUNAT_AMBIENTE` | `produccion` o `beta` |
+| `SUNAT_SERIE` / `SUNAT_SERIE_NC` | Series de boletas y notas de crédito |
+| `SUNAT_ULTIMO_CORRELATIVO` | Correlativo base (si aplica) |
+| `SUNAT_CERT_FILE` / `SUNAT_CERT_PASSWORD` | Certificado `.pfx` en `storage/app/sunat/certificates/` |
+| `SUNAT_RUC`, `SUNAT_RAZON_SOCIAL`, `SUNAT_DIRECCION`, `SUNAT_UBIGEO`, etc. | Datos del emisor |
+| `SUNAT_USUARIO_SOL`, `SUNAT_CLAVE_SOL` | Credenciales SOL |
+| `SUNAT_USUARIO_SOL_SEC`, `SUNAT_CLAVE_SOL_SEC` | Usuario secundario con permisos SEE |
+| `SUNAT_COMISION_MAX` | Tope de comisión para boletas (default `10`) |
 
-## Security Vulnerabilities
+## Comandos útiles
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+| Comando | Descripción |
+|---|---|
+| `php artisan sync:yape [--force]` | Sincroniza notificaciones desde Gmail |
+| `php artisan sunat:enviar-boletas [--id=] [--force] [--generico]` | Envía boletas pendientes vía Resumen Diario |
+| `php artisan sunat:send-boleta {id} [--use-summary]` | Envía una boleta individual vía `sendBill` |
+| `php artisan sunat:anular-nc [--serie=] [--numero=] [--monto=]` | Anula emitiendo una Nota de Crédito Electrónica |
+| `php artisan sunat:anular-manual [--serie=] [--numero=] [--monto=] [--fecha=]` | Envía una anulación (RC) manual |
+| `php artisan boleta:reconstruct-from-xml [--dry-run] [--force]` | Reconstruye transacciones desde XML/CDR existentes |
+| `php artisan sunat:check-cert` | Verifica el certificado SUNAT |
+| `php artisan sunat:test-connection` | Prueba conexión SOAP con SUNAT |
 
-## License
+`routes/console.php` programa `sync:yape` cada 5 minutos y `sunat:enviar-boletas` cada hora. En producción hace falta el cron de Laravel:
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```cron
+* * * * * cd /ruta/altoque && php artisan schedule:run >> /dev/null 2>&1
+```
+
+## Flujo resumido
+
+1. Gmail → `sync:yape` crea/actualiza transacciones.
+2. La UI permite marcar boletas emitidas, ajustar comisión y datos del cliente.
+3. `sunat:enviar-boletas` envía el resumen y guarda ticket/CDR.
+4. Si se anula, la NC guarda sus propias rutas en `boleta_nc_xml_path` y `boleta_nc_cdr_path`, sin sobrescribir el XML de la boleta original.
+
+## Pruebas
+
+```bash
+php artisan test
+```
+
+La suite usa SQLite en memoria (`phpunit.xml`), así que no afecta la base de datos de desarrollo.
+
+## Despliegue
+
+```bash
+php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+npm run build
+```
+
+Tras desplegar, revisa `storage/app/last_yape_sync.txt`: si no existe, la primera sincronización sin `--force` toma como fecha el día anterior.
