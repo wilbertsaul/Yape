@@ -13,14 +13,14 @@ class UserSeeder extends Seeder
         User::create([
             'name' => 'Administrador',
             'email' => 'admin@yape.com',
-            'password' => Hash::make('password123'),
+            'password' => Hash::make('admin123'),
             'role' => 'admin',
         ]);
 
         User::create([
             'name' => 'Empleado',
             'email' => 'empleado@yape.com',
-            'password' => Hash::make('password123'),
+            'password' => Hash::make('admin123'),
             'role' => 'employee',
         ]);
     }

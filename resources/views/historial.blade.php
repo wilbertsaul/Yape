@@ -22,7 +22,7 @@
                         <th>Tipo</th>
                         <th>Remitente / Op.</th>
                         <th>Monto</th>
-                        <th>ComisiÃ³n</th>
+                        <th>Comisión</th>
                         <th>Boleta</th>
                         <th>Fec. Emisión</th>
                     </tr>
@@ -59,7 +59,7 @@
                             S/ {{ number_format($tx->monto_transferencia, 2) }}
                         </td>
                         <td>
-                            <span class="cell-label">ComisiÃ³n</span>
+                            <span class="cell-label">Comisión</span>
                             @if($tx->comision)
                                 S/ {{ number_format($tx->comision, 2) }}
                             @else

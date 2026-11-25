@@ -103,3 +103,22 @@ npm run build
 ```
 
 Tras desplegar, revisa `storage/app/last_yape_sync.txt`: si no existe, la primera sincronización sin `--force` toma como fecha el día anterior.
+
+### Despliegue Docker en el VPS
+
+El proyecto se monta en `/var/www/AlToque` dentro del contenedor `altoque_app` (red `jemigra_jemigra_net`). Archivos incluidos para ese entorno:
+
+- `docker/Dockerfile`: imagen derivada de `bar_php` con la extensión SOAP que exige greenter/SUNAT.
+- `docker/nginx/altoque.conf`: vhost HTTP/HTTPS para `altoque.jemigra.com`, con `fastcgi_pass altoque_app:9000`.
+
+En el servidor, dentro del contenedor:
+
+```bash
+composer install --no-dev --no-interaction
+php artisan migrate --force
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+```
+
+`APP_URL` debe ser exactamente `https://altoque.jemigra.com`, porque el `redirect_uri` de Gmail se deriva de ahí. La sincronización y el envío a SUNAT los ejecutan los sidecars `altoque_scheduler` y `altoque_queue` (o el cron/Supervisor equivalente).

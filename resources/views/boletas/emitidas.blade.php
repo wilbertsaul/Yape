@@ -138,7 +138,7 @@
                                 @if($t->boleta_ticket && !$t->boleta_cdr_code && $t->boleta_estado_sunat !== 'ANULADO')
                                     <form method="POST" action="{{ route('boletas.reintentar', $t->id) }}" class="d-inline">
                                         @csrf
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Reintentar" onclick="return confirm('Â¿Resetear boleta para reenviar?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Reintentar" onclick="return confirm('¿Resetear boleta para reenviar?')">
                                             <i class="bi bi-arrow-counterclockwise"></i> Reintentar
                                         </button>
                                     </form>
@@ -146,7 +146,7 @@
                                 @if($t->boleta_estado_sunat === 'ACEPTADA' || $t->boleta_estado_sunat === 'ERROR_ANULACION')
                                     <form method="POST" action="{{ route('boletas.anular', $t->id) }}" class="d-inline">
                                         @csrf
-                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Anular en SUNAT" onclick="return confirm('Â¿Anular esta boleta en SUNAT? Se enviarÃ¡ una comunicaciÃ³n de baja.')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Anular en SUNAT" onclick="return confirm('¿Anular esta boleta en SUNAT? Se enviará una comunicación de baja.')">
                                             <i class="bi bi-x-circle"></i> Anular
                                         </button>
                                     </form>

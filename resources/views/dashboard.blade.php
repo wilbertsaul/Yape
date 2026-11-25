@@ -166,7 +166,7 @@
                                     {{ in_array($t->tipo_movimiento, ['yape_enviado', 'registro_yape', 'transferencia_terceros']) ? '-' : '+' }}S/ {{ number_format($t->monto_transferencia, 2) }}
                                 </td>
                                 <td>
-                                    <span class="cell-label">ComisiÃ³n</span>
+                                    <span class="cell-label">Comisión</span>
                                     @if($t->comision !== null)
                                         S/ {{ number_format($t->comision, 2) }}
                                     @else
