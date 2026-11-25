@@ -106,6 +106,8 @@ Tras desplegar, revisa `storage/app/last_yape_sync.txt`: si no existe, la primer
 
 ### Despliegue Docker en el VPS
 
+El runbook completo, con los comandos exactos para el servidor, está en [`DEPLOY.md`](DEPLOY.md).
+
 El proyecto se monta en `/var/www/AlToque` dentro del contenedor `altoque_app` (red `jemigra_jemigra_net`). Archivos incluidos para ese entorno:
 
 - `docker/Dockerfile`: imagen derivada de `bar_php` con la extensión SOAP que exige greenter/SUNAT.

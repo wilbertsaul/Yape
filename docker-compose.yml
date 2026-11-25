@@ -1,0 +1,37 @@
+services:
+  scheduler:
+    image: altoque_php
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: altoque_scheduler
+    working_dir: /var/www/AlToque
+    volumes:
+      - /var/www/AlToque:/var/www/AlToque
+    env_file:
+      - .env
+    command: php artisan schedule:work
+    restart: unless-stopped
+    networks:
+      - jemigra_net
+
+  queue:
+    image: altoque_php
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: altoque_queue
+    working_dir: /var/www/AlToque
+    volumes:
+      - /var/www/AlToque:/var/www/AlToque
+    env_file:
+      - .env
+    command: php artisan queue:work --tries=1 --timeout=0 --sleep=3
+    restart: unless-stopped
+    networks:
+      - jemigra_net
+
+networks:
+  jemigra_net:
+    name: jemigra_jemigra_net
+    external: true

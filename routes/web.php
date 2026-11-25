@@ -14,7 +14,7 @@ Route::get('/', function () {
 });
 
 Route::get('/gmail/redirect', [GmailAuthController::class, 'redirect'])->name('gmail.redirect');
-Route::get('/gmail/callback', [GmailAuthController::class, 'callback']);
+Route::get('/gmail/callback', [GmailAuthController::class, 'callback'])->name('gmail.callback');
 
 require __DIR__.'/auth.php';
 
