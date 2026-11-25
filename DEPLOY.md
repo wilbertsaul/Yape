@@ -159,6 +159,8 @@ docker run --rm altoque_php php -m | grep -Ei '^(soap|pdo_mysql|mysqli|zip|sodiu
 
 `php -v` debe imprimir **8.5.13** y el `grep` debe listar las 9 entradas. **OPcache aparece como `Zend OPcache`**: en PHP 8.5 está compilado en el core y viene activo en la imagen oficial, por lo que **no se incluye en `docker-php-ext-install`** (intentarlo produce `cp: cannot stat 'modules/*'`). Si falta alguna entrada, **no continuar**.
 
+Si al ejecutar comandos artisan aparece `Deprecated: Constant PDO::MYSQL_ATTR_SSL_CA is deprecated since 8.5`, el código no está actualizado: `config/database.php` debe usar `Pdo\Mysql::ATTR_SSL_CA` (con fallback a `PDO::MYSQL_ATTR_SSL_CA` para PHP 8.3/8.4). Hacer `git fetch && git reset --hard origin/main` y limpiar cachés.
+
 ## 4. Validación en contenedor temporal (no toca producción)
 
 Contenedor sin puertos, con el código montado **solo-lectura** y una copia en `/tmp` para instalar dependencias:
@@ -249,10 +251,12 @@ docker exec -i -e MYSQL_PWD="$DBPASS" "$DBCTR" mysql -uroot Yape < /tmp/altoque-
 unset DBPASS
 
 docker exec -w /var/www/AlToque altoque_app php artisan migrate:status
-docker exec -w /var/www/AlToque altoque_app php artisan migrate --force
+
+# Con el dump completo todo debe estar Ran. Solo si aparece alguna Pending:
+# docker exec -w /var/www/AlToque altoque_app php artisan migrate --force
 ```
 
-`migrate:status` debe mostrar todas las migraciones como *Ran*, incluida `2026_07_31_100000_add_nc_paths_to_transacciones`. **No ejecutar `db:seed`**: el admin `admin@yape.com` / `admin123` ya viene en el dump. Si algo falla aquí, restaurar con `$BK/Yape-before.sql` antes de seguir.
+`migrate:status` debe mostrar todas las migraciones como *Ran*, incluida `2026_07_31_100000_add_nc_paths_to_transacciones`. Si está todo *Ran*, **no ejecutar `migrate --force`**: el dump ya trae el esquema y la correlación de tu local y no queremos modificarlos. **No ejecutar `db:seed`**: el admin `admin@yape.com` / `admin123` ya viene en el dump. Si algo falla aquí, restaurar con `$BK/Yape-before.sql` antes de seguir.
 
 Caches:
 
