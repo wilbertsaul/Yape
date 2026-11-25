@@ -4,11 +4,12 @@ Objetivo: subir Altoque a **PHP 8.5.13** (parche de nov/2026) y dejar `https://a
 
 ## Reglas de seguridad (no negociables)
 
-- **Nunca** ejecutar `docker compose down` ni `docker compose up` sin nombre de servicio dentro de `/var/www/jemigra`: eso detendría `jemigra_app`, la BD y el nginx compartido.
+- **Nunca** ejecutar `docker-compose down` ni `docker-compose up` sin nombre de servicio dentro de `/var/www/jemigra`: eso detendría `jemigra_app`, la BD y el nginx compartido.
 - `jemigra_db` es un **alias de red**, no el nombre del contenedor. El contenedor real es `c6600299f82a_jemigra_db` (comando Docker) mientras que `.env` debe seguir usando `DB_HOST=jemigra_db`.
 - **Nunca** tocar `bar_php`, `jemigra_app`, `bar_app`, `jemigra_db` ni los volúmenes `dbdata`, `/var/www/bar`, `/var/www/dentamor`, `/var/www/aguilararce`, `/var/www/izipay`.
 - **Nunca** cambiar contraseñas de MySQL ni ejecutar `docker system prune` / `docker image rm`.
-- Todo cambio en `/var/www/jemigra/docker-compose.yml` se valida con `docker compose config` y `nginx -t` **antes** de recargar.
+- Todo cambio en `/var/www/jemigra/docker-compose.yml` se valida con `docker-compose config` y `nginx -t` **antes** de recargar.
+- En este VPS **no existe el plugin `docker compose`**: usar siempre `docker-compose` (v1.29.2). `docker-compose config` imprime los secretos de `.env`: para solo validar usar `docker-compose config -q && echo COMPOSE_OK`; si se genera un archivo renderizado, protegerlo con `chmod 600` y borrarlo después.
 - Si un comando falla: **detenerse** y restaurar desde `$BK`. No seguir "a ver si funciona".
 - `jemigra_web` es compartido: recargarlo interrumpe todos los vhosts por segundos. Hacerlo en ventana de bajo tráfico.
 
@@ -332,14 +333,15 @@ if '/var/www/AlToque:/var/www/AlToque' not in s:
     p.write_text(s)
 PY
 
-docker compose config > "$BK/jemigra-compose-rendered.yml"   # revisar que solo cambió web
+docker-compose config > "$BK/jemigra-compose-rendered.yml"   # revisar que solo cambió web
+chmod 600 "$BK/jemigra-compose-rendered.yml"                 # contiene secretos de .env
 mkdir -p /var/www/certbot
-docker compose up -d --force-recreate web                    # SOLO web
+docker-compose up -d --force-recreate web                    # SOLO web
 docker exec jemigra_web nginx -t || {
   cp "$BK/jemigra-docker-compose.yml" /var/www/jemigra/docker-compose.yml
   cp "$BK/jemigra-default.conf" /var/www/jemigra/docker/nginx/default.conf
   mv -f /var/www/AlToque/docker/nginx/altoque.conf.https /var/www/AlToque/docker/nginx/altoque.conf
-  docker compose up -d --force-recreate web
+  docker-compose up -d --force-recreate web
   echo 'ROLLBACK nginx aplicado'; exit 1
 }
 ```
@@ -368,7 +370,7 @@ curl -sS -o /dev/null -w 'login=%{http_code}\n' https://altoque.jemigra.com/logi
 
 ```bash
 cd /var/www/AlToque
-docker compose up -d --build scheduler queue
+docker-compose up -d --build scheduler queue
 docker ps --filter name=altoque_
 docker logs --tail=30 altoque_scheduler
 docker logs --tail=30 altoque_queue
@@ -442,7 +444,7 @@ Antes: `DBCTR=c6600299f82a_jemigra_db` y `BK=/root/backups/altoque-20261125-1833
 | Componente | Restauración |
 |---|---|
 | Código / `.env` / `vendor` | `tar -xzf "$BK/altoque-code.tar.gz" -C /var/www/AlToque` |
-| Compose de jemigra | `cp "$BK/jemigra-docker-compose.yml" /var/www/jemigra/docker-compose.yml && cd /var/www/jemigra && docker compose up -d --force-recreate web` |
+| Compose de jemigra | `cp "$BK/jemigra-docker-compose.yml" /var/www/jemigra/docker-compose.yml && cd /var/www/jemigra && docker-compose up -d --force-recreate web` |
 | Nginx | `cp "$BK/jemigra-default.conf" /var/www/jemigra/docker/nginx/default.conf && docker exec jemigra_web nginx -t && docker exec jemigra_web nginx -s reload` |
 | Let's Encrypt | `tar -xzf "$BK/letsencrypt.tar.gz" -C /etc && docker exec jemigra_web nginx -s reload` |
 | BD `Yape` | `read -s -p 'Contraseña root: ' P; echo; docker exec -i -e MYSQL_PWD="$P" "$DBCTR" mysql -uroot Yape < "$BK/Yape-before.sql"; unset P` |
