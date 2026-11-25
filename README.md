@@ -110,7 +110,7 @@ El runbook completo, con los comandos exactos para el servidor, está en [`DEPLO
 
 El proyecto se monta en `/var/www/AlToque` dentro del contenedor `altoque_app` (red `jemigra_jemigra_net`). Archivos incluidos para ese entorno:
 
-- `docker/Dockerfile`: imagen derivada de `bar_php` con la extensión SOAP que exige greenter/SUNAT.
+- `docker/Dockerfile`: imagen **PHP 8.5.13** (parche de nov/2026) con SOAP, MySQL, ZIP y opcache. No deriva de `bar_php` para no afectar a los otros proyectos del VPS.
 - `docker/nginx/altoque.conf`: vhost HTTP/HTTPS para `altoque.jemigra.com`, con `fastcgi_pass altoque_app:9000`.
 
 En el servidor, dentro del contenedor:

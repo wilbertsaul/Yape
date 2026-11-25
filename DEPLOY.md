@@ -1,6 +1,15 @@
-# Runbook de despliegue — AlToque / Yape
+# Runbook: actualización PHP + despliegue de AlToque / Yape
 
-Objetivo: dejar `https://altoque.jemigra.com` funcionando sobre el VPS existente y luego ejecutar el smoke test. Todo se ejecuta **en el servidor** (MobaXterm) salvo la subida de archivos.
+Objetivo: subir Altoque a **PHP 8.5.13** (parche de nov/2026) y dejar `https://altoque.jemigra.com` funcionando, **sin afectar los otros proyectos del VPS**.
+
+## Reglas de seguridad (no negociables)
+
+- **Nunca** ejecutar `docker compose down` ni `docker compose up` sin nombre de servicio dentro de `/var/www/jemigra`: eso detendría `jemigra_app`, `jemigra_db` y el nginx compartido.
+- **Nunca** tocar `bar_php`, `jemigra_app`, `bar_app`, `jemigra_db` ni los volúmenes `dbdata`, `/var/www/bar`, `/var/www/dentamor`, `/var/www/aguilararce`, `/var/www/izipay`.
+- **Nunca** cambiar contraseñas de MySQL ni ejecutar `docker system prune` / `docker image rm`.
+- Todo cambio en `/var/www/jemigra/docker-compose.yml` se valida con `docker compose config` y `nginx -t` **antes** de recargar.
+- Si un comando falla: **detenerse** y restaurar desde `$BK`. No seguir "a ver si funciona".
+- `jemigra_web` es compartido: recargarlo interrumpe todos los vhosts por segundos. Hacerlo en ventana de bajo tráfico.
 
 ## Datos del entorno
 
@@ -8,8 +17,9 @@ Objetivo: dejar `https://altoque.jemigra.com` funcionando sobre el VPS existente
 |---|---|
 | Código | `/var/www/AlToque` (bind mount) |
 | PHP-FPM | `altoque_app`, red `jemigra_jemigra_net` |
-| Nginx | `jemigra_web` (gestionado por `/var/www/jemigra/docker-compose.yml`) |
-| MySQL | `jemigra_db`, base de datos `Yape` (mayúscula) |
+| PHP actual | 8.3.30 (`bar_php`) → **objetivo 8.5.13 (`altoque_php`)** |
+| Nginx compartido | `jemigra_web`, compose `/var/www/jemigra/docker-compose.yml` |
+| MySQL compartido | `jemigra_db`, base de datos nueva `Yape` (mayúscula) |
 | Usuario app MySQL | `root` |
 | URL | `https://altoque.jemigra.com` |
 | Correo Let's Encrypt | `wilbertsaul@gmail.com` |
@@ -17,34 +27,65 @@ Objetivo: dejar `https://altoque.jemigra.com` funcionando sobre el VPS existente
 | Importar | dump completo local (13 tablas, migración NC incluida) |
 | No ejecutar | `php artisan db:seed` |
 
-Artefactos a subir desde la PC al servidor, en `/tmp/altoque-deploy/`:
+Artefactos a subir desde la PC a `/tmp/altoque-deploy/`:
 
-- `yape-deploy-lite.zip` (~235 KB, no incluye `.env`, tokens ni `vendor/`)
+- `yape-deploy-lite.zip` (~242 KB; sin `.env`, tokens ni `vendor/`)
 - `yape_dump.sql` (~2.2 MB)
-- Opcional pero necesario para integraciones: `credentials.json`, `storage/app/gmail_token.json`, certificado `.pfx` de SUNAT
+- Opcional pero necesario después: `credentials.json`, `storage/app/gmail_token.json`, certificado `.pfx` de SUNAT
 
 ---
 
-## 0. Backup obligatorio
+## 0. Backups obligatorios — ANTES de cualquier cambio
+
+Ejecutar **todo este bloque** y guardar la ruta `$BK`:
 
 ```bash
-mkdir -p /root/backups/altoque-$(date +%F-%H%M)
-BK=/root/backups/altoque-$(date +%F-%H%M)
-cp /var/www/AlToque/.env "$BK/.env"
-cp /var/www/jemigra/docker-compose.yml "$BK/jemigra-docker-compose.yml"
-docker inspect altoque_app > "$BK/altoque_app.inspect.json"
-docker ps -a > "$BK/containers.txt"
-```
+STAMP=$(date +%Y%m%d-%H%M%S)
+BK=/root/backups/altoque-$STAMP
+mkdir -p "$BK"
+chmod 700 "$BK"
 
-Si la base `Yape` ya existe, volcarla antes de sobrescribir:
+# Estado actual (solo lectura)
+docker ps -a                          > "$BK/docker-ps.txt"
+docker image ls                       > "$BK/docker-images.txt"
+docker network ls                     > "$BK/docker-networks.txt"
+docker inspect altoque_app            > "$BK/altoque_app.inspect.json"
+docker inspect jemigra_web            > "$BK/jemigra_web.inspect.json"
+docker inspect jemigra_db             > "$BK/jemigra_db.inspect.json"
 
-```bash
+# Nginx compartido y certificados (afecta a TODOS los vhosts)
+docker exec jemigra_web nginx -T      > "$BK/nginx-before.conf" 2>&1 || true
+tar -czf "$BK/letsencrypt.tar.gz" -C /etc letsencrypt 2>/dev/null || true
+[ -d /var/www/certbot ] && tar -czf "$BK/certbot.tar.gz" -C /var/www certbot || true
+
+# Archivos que se van a editar
+cp -a /var/www/jemigra/docker-compose.yml      "$BK/jemigra-docker-compose.yml"
+cp -a /var/www/jemigra/docker/nginx/default.conf "$BK/jemigra-default.conf"
+
+# Proyecto Altoque completo (incluye .env, tokens, SUNAT y vendor)
+tar -czf "$BK/altoque-code.tar.gz" -C /var/www/AlToque \
+  --exclude='./node_modules' \
+  --exclude='./storage/logs' \
+  --exclude='./storage/framework/cache' \
+  --exclude='./storage/framework/sessions' \
+  --exclude='./storage/framework/views' \
+  .
+
+# Base de datos Yape (si ya existe)
 read -s -p 'Contraseña root de MySQL: ' DBPASS; echo
-docker exec -i -e MYSQL_PWD="$DBPASS" jemigra_db mysqldump --single-transaction Yape > "$BK/Yape-before.sql"
+docker exec -i -e MYSQL_PWD="$DBPASS" jemigra_db mysql -uroot -e 'SHOW DATABASES;' > "$BK/databases.txt"
+docker exec -i -e MYSQL_PWD="$DBPASS" jemigra_db mysqldump --single-transaction Yape \
+  > "$BK/Yape-before.sql" 2> "$BK/mysqldump.err" || echo 'Yape aún no existe; se creará en el paso 7'
 unset DBPASS
+
+# Imagen exacta del contenedor actual, para rollback
+docker commit altoque_app altoque_php:8.3-backup
+
+chmod 600 "$BK"/*
+echo "BACKUP LISTO: $BK"
 ```
 
-> Si el volcado falla diciendo que la base no existe, es normal: se crea en el paso 6.
+> `$BK` contiene secretos (`.env`, tokens, certificados). Permanece en `/root`, con permisos `600`.
 
 ## 1. Subir y verificar artefactos
 
@@ -52,10 +93,12 @@ unset DBPASS
 mkdir -p /tmp/altoque-deploy
 # Subir los archivos con WinSCP/MobaXterm a /tmp/altoque-deploy/
 ls -lh /tmp/altoque-deploy
-unzip -l /tmp/altoque-deploy/yape-deploy-lite.zip | grep -E '(^|/)\.env$|credentials\.json|gmail_token\.json|vendor/autoload\.php' || echo 'Paquete limpio'
+unzip -l /tmp/altoque-deploy/yape-deploy-lite.zip \
+  | grep -E '(^|/)\.env$|credentials\.json|gmail_token\.json|vendor/autoload\.php' \
+  || echo 'Paquete limpio'
 ```
 
-## 2. Código
+## 2. Código — solo `/var/www/AlToque`
 
 ```bash
 command -v unzip >/dev/null || { apt-get update && apt-get install -y unzip; }
@@ -68,22 +111,45 @@ unzip -o /tmp/altoque-deploy/yape-deploy-lite.zip -d /var/www/AlToque \
 git status --short --branch
 ```
 
-`git reset --hard` descarta los cambios locales del código antiguo (por eso existe el backup). `.env` no se toca: no está versionado ni dentro del zip.
+`git reset --hard` descarta el código antiguo de Altoque (backup en `$BK`). **No afecta** a `/var/www/jemigra`, `/var/www/bar` ni a los demás.
 
-## 3. Imagen PHP con SOAP
-
-`bar_php` no tiene SOAP y greenter/SUNAT lo exige:
+## 3. Imagen PHP 8.5.13
 
 ```bash
-docker build -t altoque_php -f /var/www/AlToque/docker/Dockerfile /var/www/AlToque/docker
-docker run --rm altoque_php php -m | grep -i '^soap$'
+docker build -t altoque_php:8.5.13 -f /var/www/AlToque/docker/Dockerfile /var/www/AlToque/docker
+docker tag altoque_php:8.5.13 altoque_php
+
+docker run --rm altoque_php php -v
+docker run --rm altoque_php php -m | grep -E '^(soap|pdo_mysql|mysqli|zip|opcache|sodium|bcmath|intl|gd)$'
 ```
 
-Debe imprimir `soap`. Si `docker build` falla por falta de `libxml2-dev`, revisar que el contenedor tenga salida a Internet.
+`php -v` debe imprimir **8.5.13** y el `grep` debe listar todas las extensiones. Si falta alguna, **no continuar**.
 
-## 4. Recrear `altoque_app`
+## 4. Validación en contenedor temporal (no toca producción)
 
-El contenedor fue creado con `docker run` manual; no está en ningún compose. Se recrea con el mismo mount, red y restart:
+Contenedor sin puertos, con el código montado **solo-lectura** y una copia en `/tmp` para instalar dependencias:
+
+```bash
+docker run -d --name altoque_upgrade_check \
+  --network jemigra_jemigra_net \
+  -v /var/www/AlToque:/var/www/AlToque:ro \
+  --entrypoint sleep altoque_php infinity
+
+docker exec altoque_upgrade_check sh -c \
+  'mkdir -p /tmp/altoque-test && tar -C /var/www/AlToque --exclude=./vendor --exclude=./node_modules -cf - . | tar -C /tmp/altoque-test -xf -'
+
+docker exec altoque_upgrade_check sh -c \
+  'php -r "copy(\"https://getcomposer.org/installer\", \"/tmp/composer-setup.php\");" && php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer && rm -f /tmp/composer-setup.php'
+
+docker exec -w /tmp/altoque-test altoque_upgrade_check composer install --no-interaction --prefer-dist
+docker exec -w /tmp/altoque-test altoque_upgrade_check php artisan test
+docker exec -w /tmp/altoque-test altoque_upgrade_check php artisan migrate:status
+docker rm -f altoque_upgrade_check
+```
+
+Deben pasar los **9 tests** y `migrate:status` debe conectarse a `jemigra_db`. Si algo falla, borrar el contenedor y revisar antes de seguir.
+
+## 5. Recrear `altoque_app` (único contenedor que se reemplaza)
 
 ```bash
 docker stop altoque_app && docker rm altoque_app
@@ -93,26 +159,30 @@ docker run -d --name altoque_app \
   -v /var/www/AlToque:/var/www/AlToque \
   -w /var/www/AlToque \
   altoque_php php-fpm
+
+docker exec altoque_app php -v
 docker exec altoque_app php -m | grep -i '^soap$'
+docker ps --filter name=altoque_app
 ```
 
-> Si `$BK/altoque_app.inspect.json` mostrara variables de entorno de la app además de las de PHP, añádelas con `-e CLAVE=valor`. En el contenedor actual solo aparecen variables base de PHP; la configuración de Laravel se lee desde `.env`.
+> Si `$BK/altoque_app.inspect.json` mostrara variables de entorno de la app además de las de PHP, añádelas con `-e CLAVE=valor`. Actualmente Laravel lee todo desde `.env`.
 
-## 5. Composer y variables de entorno
+## 6. Composer y `.env`
 
-Instalar Composer **después** de recrear el contenedor (lo installed en el filesystem del contenedor no sobrevive a `docker rm`):
+Instalar Composer **después** de recrear el contenedor (no sobrevive a `docker rm`):
 
 ```bash
-docker exec altoque_app sh -c 'php -r "copy(\"https://getcomposer.org/installer\", \"/tmp/composer-setup.php\");" && php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer && rm -f /tmp/composer-setup.php'
+docker exec altoque_app sh -c \
+  'php -r "copy(\"https://getcomposer.org/installer\", \"/tmp/composer-setup.php\");" && php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer && rm -f /tmp/composer-setup.php'
 docker exec altoque_app composer --version
 docker exec -w /var/www/AlToque altoque_app composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 ```
 
-Ajustar `.env` en el host:
+Ajustar `.env` (sin tocar `DB_PASSWORD`):
 
 ```bash
 cd /var/www/AlToque
-cp .env .env.backup.$(date +%Y%m%d-%H%M%S)
+cp .env .env.bak.$(date +%Y%m%d-%H%M%S)
 sed -i 's|^APP_URL=.*|APP_URL=https://altoque.jemigra.com|' .env
 sed -i 's|^APP_LOCALE=.*|APP_LOCALE=es|' .env
 sed -i 's|^APP_ENV=.*|APP_ENV=production|' .env
@@ -124,9 +194,9 @@ grep -q '^DB_USERNAME=' .env || printf 'DB_USERNAME=root\n' >> .env
 grep -E '^(APP_URL|APP_ENV|APP_DEBUG|APP_LOCALE|DB_HOST|DB_DATABASE|DB_USERNAME)=' .env
 ```
 
-`DB_PASSWORD` debe coincidir con la contraseña `root` de MySQL. Si cambió, edítalo con `nano .env` (sin pegarlo en el chat). `APP_URL` debe ser exactamente `https://altoque.jemigra.com`: el `redirect_uri` de Gmail se deriva de ahí.
+`APP_URL` debe ser exactamente `https://altoque.jemigra.com`: el `redirect_uri` de Gmail se deriva de ahí.
 
-## 6. Base de datos
+## 7. Base de datos `Yape` (sin tocar `jemigra_bd`)
 
 ```bash
 read -s -p 'Contraseña root de MySQL: ' DBPASS; echo
@@ -139,9 +209,9 @@ docker exec -w /var/www/AlToque altoque_app php artisan migrate:status
 docker exec -w /var/www/AlToque altoque_app php artisan migrate --force
 ```
 
-`migrate:status` debe mostrar todas las migraciones como *Ran* (incluida `2026_07_31_100000_add_nc_paths_to_transacciones`). **No ejecutar `db:seed`.** El usuario `admin@yape.com` ya viene en el dump con contraseña `admin123`.
+`migrate:status` debe mostrar todas las migraciones como *Ran*, incluida `2026_07_31_100000_add_nc_paths_to_transacciones`. **No ejecutar `db:seed`**: el admin `admin@yape.com` / `admin123` ya viene en el dump.
 
-Caches y enlace de storage:
+Caches:
 
 ```bash
 docker exec -w /var/www/AlToque altoque_app php artisan config:clear
@@ -153,13 +223,12 @@ docker exec -w /var/www/AlToque altoque_app php artisan view:cache
 docker exec -w /var/www/AlToque altoque_app php artisan storage:link
 ```
 
-## 7. Nginx y certificado HTTPS
+## 8. Nginx compartido y HTTPS
 
-Añadir los tres mounts al servicio `web` del compose de `jemigra`:
+Añadir **solo tres líneas** al servicio `web`:
 
 ```bash
 cd /var/www/jemigra
-cp docker-compose.yml docker-compose.yml.bak.$(date +%Y%m%d-%H%M%S)
 python3 - <<'PY'
 from pathlib import Path
 p = Path('/var/www/jemigra/docker-compose.yml')
@@ -174,11 +243,18 @@ if '/var/www/AlToque:/var/www/AlToque' not in s:
     s = s.replace(anchor, anchor + extra, 1)
     p.write_text(s)
 PY
+
+docker compose config > "$BK/jemigra-compose-rendered.yml"   # revisar que solo cambió web
 mkdir -p /var/www/certbot
-docker compose up -d --force-recreate web
+docker compose up -d --force-recreate web                    # SOLO web
+docker exec jemigra_web nginx -t || {
+  cp "$BK/jemigra-docker-compose.yml" /var/www/jemigra/docker-compose.yml
+  docker compose up -d --force-recreate web
+  echo 'ROLLBACK nginx aplicado'; exit 1
+}
 ```
 
-El vhost definitivo referencia un certificado que aún no existe, así que `nginx -t` fallaría. Se usa un vhost HTTP temporal solo para el challenge ACME:
+Vhost HTTP temporal para el challenge ACME (el definitivo referencia un certificado que aún no existe):
 
 ```bash
 cd /var/www/AlToque/docker/nginx
@@ -195,7 +271,7 @@ EOF
 docker exec jemigra_web nginx -t && docker exec jemigra_web nginx -s reload
 ```
 
-Emitir el certificado:
+Certificado:
 
 ```bash
 docker run --rm \
@@ -206,7 +282,7 @@ docker run --rm \
   --email wilbertsaul@gmail.com --agree-tos --no-eff-email
 ```
 
-Restaurar el vhost HTTPS y validar:
+Restaurar HTTPS y validar:
 
 ```bash
 cp /var/www/AlToque/docker/nginx/altoque.conf.https /var/www/AlToque/docker/nginx/altoque.conf
@@ -215,7 +291,7 @@ curl -I https://altoque.jemigra.com
 curl -sS -o /dev/null -w 'login=%{http_code}\n' https://altoque.jemigra.com/login
 ```
 
-## 8. Scheduler y cola
+## 9. Sidecars (solo `altoque_*`)
 
 ```bash
 cd /var/www/AlToque
@@ -225,17 +301,16 @@ docker logs --tail=30 altoque_scheduler
 docker logs --tail=30 altoque_queue
 ```
 
-Ejecutan `sync:yape` cada 5 minutos y `sunat:enviar-boletas` cada hora, más `queue:work`. La red externa `jemigra_jemigra_net` ya existe.
+Ejecutan `sync:yape` cada 5 min y `sunat:enviar-boletas` cada hora, más `queue:work`.
 
-## 9. Integraciones
+## 10. Integraciones
 
-**Gmail** (el código ya usa `route('gmail.callback')`, derivado de `APP_URL`):
+**Gmail** (el código usa `route('gmail.callback')`, derivado de `APP_URL`):
 
 1. Subir `credentials.json` a `/var/www/AlToque/credentials.json`.
 2. Si hay token previo, subirlo a `/var/www/AlToque/storage/app/gmail_token.json`.
-3. En Google Cloud Console, añadir `https://altoque.jemigra.com/gmail/callback` a *URIs de redireccionamiento autorizadas*.
+3. En Google Cloud Console añadir `https://altoque.jemigra.com/gmail/callback` a las URIs autorizadas.
 4. Abrir `https://altoque.jemigra.com/gmail/redirect` y completar el consentimiento.
-5. Verificar: `docker exec -w /var/www/AlToque altoque_app php artisan route:list --path=gmail`.
 
 **SUNAT**:
 
@@ -245,42 +320,47 @@ docker exec -w /var/www/AlToque altoque_app php artisan sunat:check-cert
 docker exec -w /var/www/AlToque altoque_app php artisan sunat:test-connection
 ```
 
-Empezar con `SUNAT_AMBIENTE=beta` en `.env` y cambiar a `produccion` solo después de validar una boleta real. Recordar regenerar caches con `config:cache` tras cambiar `.env`.
+Empezar con `SUNAT_AMBIENTE=beta` y cambiar a `produccion` tras validar. Regenerar `config:cache` si cambias `.env`.
 
-## 10. Smoke test
+## 11. Smoke test y comprobación de los otros proyectos
 
-- [ ] `curl -I https://altoque.jemigra.com` → `200`/`302`, certificado válido
+- [ ] `docker exec altoque_app php -v` → 8.5.13
+- [ ] `curl -I https://altoque.jemigra.com` → certificado válido
 - [ ] Login `admin@yape.com` / `admin123` → dashboard
-- [ ] Boletas pendientes, emitidas, historial, clientes, saldos y usuarios cargan sin error 500
-- [ ] Emitir una boleta de prueba en beta → XML y CDR descargables
-- [ ] Anular con nota de crédito y verificar estado
-- [ ] `docker logs altoque_scheduler` y `altoque_queue` sin excepciones
-- [ ] Probar en celular (360/390 px): menú, tablas y botones táctiles
+- [ ] Boletas pendientes, emitidas, historial, clientes, saldos y usuarios sin error 500
+- [ ] Boleta de prueba en beta con XML/CDR; nota de crédito
+- [ ] Logs de `altoque_scheduler` / `altoque_queue` sin excepciones
+- [ ] Probar en celular (360/390 px)
 
-Revisar logs si algo falla:
+Verificar que los demás proyectos siguen vivos:
+
+```bash
+docker ps --format '{{.Names}}\t{{.Status}}\t{{.Image}}'
+for u in https://jemigra.com https://bar.jemigra.com https://www.bytsolution.com; do
+  curl -sS -o /dev/null -w "$u %{http_code}\n" "$u"
+done
+docker exec jemigra_db mysql -uroot -p -e 'SHOW DATABASES;'   # jemigra_bd debe seguir ahí
+```
+
+Logs si algo falla:
 
 ```bash
 docker exec altoque_app tail -n 80 /var/www/AlToque/storage/logs/laravel.log
 docker logs --tail=80 jemigra_web
 ```
 
-## Rollback
+---
 
-```bash
-# 1. Restaurar .env y compose
-cp "$BK/.env" /var/www/AlToque/.env
-cp "$BK/jemigra-docker-compose.yml" /var/www/jemigra/docker-compose.yml
-cd /var/www/jemigra && docker compose up -d --force-recreate web
+## Rollback por componente
 
-# 2. Volver al contenedor original (valores leídos de $BK/altoque_app.inspect.json)
-docker stop altoque_scheduler altoque_queue altoque_app 2>/dev/null
-docker rm altoque_scheduler altoque_queue altoque_app 2>/dev/null
-docker run -d --name altoque_app --restart unless-stopped \
-  --network jemigra_jemigra_net -v /var/www/AlToque:/var/www/AlToque \
-  -w /var/www/AlToque bar_php php-fpm
+| Componente | Restauración |
+|---|---|
+| Código / `.env` / `vendor` | `tar -xzf "$BK/altoque-code.tar.gz" -C /var/www/AlToque` |
+| Compose de jemigra | `cp "$BK/jemigra-docker-compose.yml" /var/www/jemigra/docker-compose.yml && cd /var/www/jemigra && docker compose up -d --force-recreate web` |
+| Nginx | `cp "$BK/jemigra-default.conf" /var/www/jemigra/docker/nginx/default.conf && docker exec jemigra_web nginx -t && docker exec jemigra_web nginx -s reload` |
+| Let's Encrypt | `tar -xzf "$BK/letsencrypt.tar.gz" -C /etc && docker exec jemigra_web nginx -s reload` |
+| BD `Yape` | `read -s -p 'Contraseña root: ' P; echo; docker exec -i -e MYSQL_PWD="$P" jemigra_db mysql -uroot Yape < "$BK/Yape-before.sql"; unset P` |
+| `altoque_app` | `docker stop altoque_app && docker rm altoque_app && docker run -d --name altoque_app --restart unless-stopped --network jemigra_jemigra_net -v /var/www/AlToque:/var/www/AlToque -w /var/www/AlToque altoque_php:8.3-backup php-fpm` |
+| Sidecars | `docker stop altoque_scheduler altoque_queue 2>/dev/null; docker rm altoque_scheduler altoque_queue 2>/dev/null` |
 
-# 3. Restaurar BD si se sobrescribió
-read -s -p 'Contraseña root de MySQL: ' DBPASS; echo
-docker exec -i -e MYSQL_PWD="$DBPASS" jemigra_db mysql -uroot Yape < "$BK/Yape-before.sql"
-unset DBPASS
-```
+Tras cualquier rollback, repetir la comprobación de los otros proyectos del paso 11.
