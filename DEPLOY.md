@@ -4,7 +4,8 @@ Objetivo: subir Altoque a **PHP 8.5.13** (parche de nov/2026) y dejar `https://a
 
 ## Reglas de seguridad (no negociables)
 
-- **Nunca** ejecutar `docker compose down` ni `docker compose up` sin nombre de servicio dentro de `/var/www/jemigra`: eso detendría `jemigra_app`, `jemigra_db` y el nginx compartido.
+- **Nunca** ejecutar `docker compose down` ni `docker compose up` sin nombre de servicio dentro de `/var/www/jemigra`: eso detendría `jemigra_app`, la BD y el nginx compartido.
+- `jemigra_db` es un **alias de red**, no el nombre del contenedor. El contenedor real es `c6600299f82a_jemigra_db` (comando Docker) mientras que `.env` debe seguir usando `DB_HOST=jemigra_db`.
 - **Nunca** tocar `bar_php`, `jemigra_app`, `bar_app`, `jemigra_db` ni los volúmenes `dbdata`, `/var/www/bar`, `/var/www/dentamor`, `/var/www/aguilararce`, `/var/www/izipay`.
 - **Nunca** cambiar contraseñas de MySQL ni ejecutar `docker system prune` / `docker image rm`.
 - Todo cambio en `/var/www/jemigra/docker-compose.yml` se valida con `docker compose config` y `nginx -t` **antes** de recargar.
@@ -19,12 +20,12 @@ Objetivo: subir Altoque a **PHP 8.5.13** (parche de nov/2026) y dejar `https://a
 | PHP-FPM | `altoque_app`, red `jemigra_jemigra_net` |
 | PHP actual | 8.3.30 (`bar_php`) → **objetivo 8.5.13 (`altoque_php`)** |
 | Nginx compartido | `jemigra_web`, compose `/var/www/jemigra/docker-compose.yml` |
-| MySQL compartido | `jemigra_db`, base de datos nueva `Yape` (mayúscula) |
-| Usuario app MySQL | `root` |
+| MySQL compartido | contenedor `c6600299f82a_jemigra_db` (alias de red `jemigra_db`), base nueva `Yape` (mayúscula) |
+| Usuario app MySQL | `jemigra_user` (ya está en `.env`); se le conceden permisos **solo sobre `Yape.*`** |
 | URL | `https://altoque.jemigra.com` |
 | Correo Let's Encrypt | `wilbertsaul@gmail.com` |
 | Admin | `admin@yape.com` / `admin123` |
-| Importar | dump completo local (13 tablas, migración NC incluida) |
+| Importar | dump completo local (13 tablas, migración NC incluida); **reemplaza** la `Yape` actual (respaldo en `$BK/Yape-before.sql`) |
 | No ejecutar | `php artisan db:seed` |
 
 Artefactos a subir desde la PC a `/tmp/altoque-deploy/`:
@@ -42,6 +43,7 @@ Ejecutar **todo este bloque** y guardar la ruta `$BK`:
 ```bash
 STAMP=$(date +%Y%m%d-%H%M%S)
 BK=/root/backups/altoque-$STAMP
+DBCTR=c6600299f82a_jemigra_db
 mkdir -p "$BK"
 chmod 700 "$BK"
 
@@ -51,7 +53,7 @@ docker image ls                       > "$BK/docker-images.txt"
 docker network ls                     > "$BK/docker-networks.txt"
 docker inspect altoque_app            > "$BK/altoque_app.inspect.json"
 docker inspect jemigra_web            > "$BK/jemigra_web.inspect.json"
-docker inspect jemigra_db             > "$BK/jemigra_db.inspect.json"
+docker inspect "$DBCTR"               > "$BK/jemigra_db.inspect.json"
 
 # Nginx compartido y certificados (afecta a TODOS los vhosts)
 docker exec jemigra_web nginx -T      > "$BK/nginx-before.conf" 2>&1 || true
@@ -71,10 +73,18 @@ tar -czf "$BK/altoque-code.tar.gz" -C /var/www/AlToque \
   --exclude='./storage/framework/views' \
   .
 
-# Base de datos Yape (si ya existe)
+# Bases de datos y usuarios (solo lectura)
 read -s -p 'Contraseña root de MySQL: ' DBPASS; echo
-docker exec -i -e MYSQL_PWD="$DBPASS" jemigra_db mysql -uroot -e 'SHOW DATABASES;' > "$BK/databases.txt"
-docker exec -i -e MYSQL_PWD="$DBPASS" jemigra_db mysqldump --single-transaction Yape \
+docker exec -i -e MYSQL_PWD="$DBPASS" "$DBCTR" mysql -uroot -e 'SHOW DATABASES;' > "$BK/databases.txt"
+docker exec -i -e MYSQL_PWD="$DBPASS" "$DBCTR" mysql -uroot \
+  -e "SELECT user,host FROM mysql.user WHERE user IN ('root','jemigra_user');" > "$BK/mysql-users.txt"
+
+# Esquema compartido (protección extra; NO se modifica en el despliegue)
+docker exec -i -e MYSQL_PWD="$DBPASS" "$DBCTR" mysqldump --single-transaction jemigra_bd \
+  > "$BK/jemigra_bd-before.sql" 2> "$BK/jemigra_bd.err" || echo 'No se pudo respaldar jemigra_bd'
+
+# Base de datos Yape (se reemplazará en el paso 7)
+docker exec -i -e MYSQL_PWD="$DBPASS" "$DBCTR" mysqldump --single-transaction Yape \
   > "$BK/Yape-before.sql" 2> "$BK/mysqldump.err" || echo 'Yape aún no existe; se creará en el paso 7'
 unset DBPASS
 
@@ -189,27 +199,36 @@ sed -i 's|^APP_ENV=.*|APP_ENV=production|' .env
 sed -i 's|^APP_DEBUG=.*|APP_DEBUG=false|' .env
 sed -i 's|^DB_HOST=.*|DB_HOST=jemigra_db|' .env
 sed -i 's|^DB_DATABASE=.*|DB_DATABASE=Yape|' .env
-sed -i 's|^DB_USERNAME=.*|DB_USERNAME=root|' .env
-grep -q '^DB_USERNAME=' .env || printf 'DB_USERNAME=root\n' >> .env
+sed -i 's|^DB_USERNAME=.*|DB_USERNAME=jemigra_user|' .env
+grep -q '^DB_USERNAME=' .env || printf 'DB_USERNAME=jemigra_user\n' >> .env
 grep -E '^(APP_URL|APP_ENV|APP_DEBUG|APP_LOCALE|DB_HOST|DB_DATABASE|DB_USERNAME)=' .env
 ```
 
-`APP_URL` debe ser exactamente `https://altoque.jemigra.com`: el `redirect_uri` de Gmail se deriva de ahí.
+`APP_URL` debe ser exactamente `https://altoque.jemigra.com`: el `redirect_uri` de Gmail se deriva de ahí. `DB_HOST=jemigra_db` se mantiene: es el alias de red válido del contenedor `c6600299f82a_jemigra_db`. **No se toca `DB_PASSWORD`** ni se cambia la contraseña de `jemigra_user`.
 
 ## 7. Base de datos `Yape` (sin tocar `jemigra_bd`)
 
+**Decisión confirmada: la `Yape` actual se reemplaza** con el dump local. El respaldo previo está en `$BK/Yape-before.sql`.
+
 ```bash
+DBCTR=c6600299f82a_jemigra_db
 read -s -p 'Contraseña root de MySQL: ' DBPASS; echo
-docker exec -i -e MYSQL_PWD="$DBPASS" jemigra_db mysql -uroot \
+
+# Permisos solo sobre Yape; no se modifica jemigra_bd ni se rotan contraseñas
+docker exec -i -e MYSQL_PWD="$DBPASS" "$DBCTR" mysql -uroot \
   -e "CREATE DATABASE IF NOT EXISTS \`Yape\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-docker exec -i -e MYSQL_PWD="$DBPASS" jemigra_db mysql -uroot Yape < /tmp/altoque-deploy/yape_dump.sql
+docker exec -i -e MYSQL_PWD="$DBPASS" "$DBCTR" mysql -uroot \
+  -e "GRANT ALL PRIVILEGES ON \`Yape\`.* TO 'jemigra_user'@'%'; FLUSH PRIVILEGES;"
+
+# Reemplaza completamente el esquema Yape (el dump incluye DROP TABLE IF EXISTS)
+docker exec -i -e MYSQL_PWD="$DBPASS" "$DBCTR" mysql -uroot Yape < /tmp/altoque-deploy/yape_dump.sql
 unset DBPASS
 
 docker exec -w /var/www/AlToque altoque_app php artisan migrate:status
 docker exec -w /var/www/AlToque altoque_app php artisan migrate --force
 ```
 
-`migrate:status` debe mostrar todas las migraciones como *Ran*, incluida `2026_07_31_100000_add_nc_paths_to_transacciones`. **No ejecutar `db:seed`**: el admin `admin@yape.com` / `admin123` ya viene en el dump.
+`migrate:status` debe mostrar todas las migraciones como *Ran*, incluida `2026_07_31_100000_add_nc_paths_to_transacciones`. **No ejecutar `db:seed`**: el admin `admin@yape.com` / `admin123` ya viene en el dump. Si algo falla aquí, restaurar con `$BK/Yape-before.sql` antes de seguir.
 
 Caches:
 
@@ -335,11 +354,14 @@ Empezar con `SUNAT_AMBIENTE=beta` y cambiar a `produccion` tras validar. Regener
 Verificar que los demás proyectos siguen vivos:
 
 ```bash
+DBCTR=c6600299f82a_jemigra_db
 docker ps --format '{{.Names}}\t{{.Status}}\t{{.Image}}'
 for u in https://jemigra.com https://bar.jemigra.com https://www.bytsolution.com; do
   curl -sS -o /dev/null -w "$u %{http_code}\n" "$u"
 done
-docker exec jemigra_db mysql -uroot -p -e 'SHOW DATABASES;'   # jemigra_bd debe seguir ahí
+read -s -p 'Contraseña root de MySQL: ' P; echo
+docker exec -i -e MYSQL_PWD="$P" "$DBCTR" mysql -uroot -e 'SHOW DATABASES;'   # jemigra_bd debe seguir ahí
+unset P
 ```
 
 Logs si algo falla:
@@ -353,13 +375,15 @@ docker logs --tail=80 jemigra_web
 
 ## Rollback por componente
 
+Antes: `DBCTR=c6600299f82a_jemigra_db` y `BK=/root/backups/altoque-20261125-183349` (o la ruta de tu backup).
+
 | Componente | Restauración |
 |---|---|
 | Código / `.env` / `vendor` | `tar -xzf "$BK/altoque-code.tar.gz" -C /var/www/AlToque` |
 | Compose de jemigra | `cp "$BK/jemigra-docker-compose.yml" /var/www/jemigra/docker-compose.yml && cd /var/www/jemigra && docker compose up -d --force-recreate web` |
 | Nginx | `cp "$BK/jemigra-default.conf" /var/www/jemigra/docker/nginx/default.conf && docker exec jemigra_web nginx -t && docker exec jemigra_web nginx -s reload` |
 | Let's Encrypt | `tar -xzf "$BK/letsencrypt.tar.gz" -C /etc && docker exec jemigra_web nginx -s reload` |
-| BD `Yape` | `read -s -p 'Contraseña root: ' P; echo; docker exec -i -e MYSQL_PWD="$P" jemigra_db mysql -uroot Yape < "$BK/Yape-before.sql"; unset P` |
+| BD `Yape` | `read -s -p 'Contraseña root: ' P; echo; docker exec -i -e MYSQL_PWD="$P" "$DBCTR" mysql -uroot Yape < "$BK/Yape-before.sql"; unset P` |
 | `altoque_app` | `docker stop altoque_app && docker rm altoque_app && docker run -d --name altoque_app --restart unless-stopped --network jemigra_jemigra_net -v /var/www/AlToque:/var/www/AlToque -w /var/www/AlToque altoque_php:8.3-backup php-fpm` |
 | Sidecars | `docker stop altoque_scheduler altoque_queue 2>/dev/null; docker rm altoque_scheduler altoque_queue 2>/dev/null` |
 
