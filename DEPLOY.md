@@ -30,9 +30,13 @@ Objetivo: subir Altoque a **PHP 8.5.13** (parche de nov/2026) y dejar `https://a
 
 Artefactos a subir desde la PC a `/tmp/altoque-deploy/`:
 
-- `yape-deploy-lite.zip` (~242 KB; sin `.env`, tokens ni `vendor/`)
+- `yape-deploy-lite.zip` (~244 KB; sin `.env`, tokens ni `vendor/`)
 - `yape_dump.sql` (~2.2 MB)
 - Opcional pero necesario después: `credentials.json`, `storage/app/gmail_token.json`, certificado `.pfx` de SUNAT
+
+## Alcance de esta entrega — fase 1
+
+Ejecutar **solo los pasos 1 → 7, 9 y 7b**. **NO ejecutar el paso 8** (nginx, dominio, SSL) ni tocar `/var/www/jemigra/docker-compose.yml`: queda para la fase 2. La comprobación HTTP se hace temporalmente dentro de `altoque_app`, sin exponer puertos ni dominio.
 
 ---
 
@@ -99,10 +103,30 @@ echo "BACKUP LISTO: $BK"
 
 ## 1. Subir y verificar artefactos
 
+En el servidor, crear la carpeta destino:
+
 ```bash
 mkdir -p /tmp/altoque-deploy
-# Subir los archivos con WinSCP/MobaXterm a /tmp/altoque-deploy/
+```
+
+Desde **PowerShell en Windows** (reemplaza `IP_DEL_VPS` por la IP de tu VPS):
+
+```powershell
+$hostIp = "IP_DEL_VPS"
+$remote = "root@$hostIp"
+
+ssh $remote "mkdir -p /tmp/altoque-deploy"
+scp "C:\Users\ANA\AppData\Local\Temp\opencode\yape-deploy-lite.zip" "${remote}:/tmp/altoque-deploy/"
+scp "C:\Users\ANA\AppData\Local\Temp\opencode\yape_dump.sql" "${remote}:/tmp/altoque-deploy/"
+
+ssh $remote "ls -lh /tmp/altoque-deploy"
+```
+
+Si `scp` no está disponible, usa WinSCP/MobaXterm o `sftp $remote` con `put`. Luego, en el servidor:
+
+```bash
 ls -lh /tmp/altoque-deploy
+unzip -tq /tmp/altoque-deploy/yape-deploy-lite.zip && echo ZIP_OK
 unzip -l /tmp/altoque-deploy/yape-deploy-lite.zip \
   | grep -E '(^|/)\.env$|credentials\.json|gmail_token\.json|vendor/autoload\.php' \
   || echo 'Paquete limpio'
@@ -242,6 +266,35 @@ docker exec -w /var/www/AlToque altoque_app php artisan view:cache
 docker exec -w /var/www/AlToque altoque_app php artisan storage:link
 ```
 
+## 7b. Smoke test sin nginx ni dominio (fase 1)
+
+No expone puertos ni modifica `jemigra_web`. Comprobaciones CLI:
+
+```bash
+docker exec altoque_app php -v
+docker exec -w /var/www/AlToque altoque_app php artisan --version
+docker exec -w /var/www/AlToque altoque_app php artisan migrate:status
+docker exec -w /var/www/AlToque altoque_app php artisan db:show
+
+docker exec -w /var/www/AlToque altoque_app php artisan tinker --execute='echo "users=".App\Models\User::count()."\nclientes=".App\Models\Cliente::count()."\ntransacciones=".App\Models\Transaccion::count()."\n";'
+docker exec -w /var/www/AlToque altoque_app php artisan tinker --execute='echo \Illuminate\Support\Facades\Hash::check("admin123", App\Models\User::where("email","admin@yape.com")->first()->password) ? "ADMIN_OK\n" : "ADMIN_FAIL\n";'
+```
+
+Comprobación HTTP temporal **dentro** del contenedor (se apaga sola; no abre puertos al exterior):
+
+```bash
+docker exec -w /var/www/AlToque altoque_app sh -c '
+  php artisan serve --host=127.0.0.1 --port=8000 >/tmp/artisan-serve.log 2>&1 &
+  PID=$!
+  sleep 3
+  curl -sS -o /dev/null -w "login=%{http_code}\n" http://127.0.0.1:8000/login
+  kill $PID 2>/dev/null || true
+  tail -n 20 /tmp/artisan-serve.log
+'
+```
+
+`login=200` confirma que Laravel responde. Si sale 500, revisar `/var/www/AlToque/storage/logs/laravel.log`.
+
 ## 8. Nginx compartido y HTTPS
 
 Añadir **solo tres líneas** al servicio `web`. **Primero** dejar el vhost HTTP temporal: el definitivo referencia un certificado que aún no existe y haría fallar `nginx -t` al recrear el nginx compartido.
@@ -340,25 +393,33 @@ Empezar con `SUNAT_AMBIENTE=beta` y cambiar a `produccion` tras validar. Regener
 
 ## 11. Smoke test y comprobación de los otros proyectos
 
-- [ ] `docker exec altoque_app php -v` → 8.5.13
-- [ ] `curl -I https://altoque.jemigra.com` → certificado válido
-- [ ] Login `admin@yape.com` / `admin123` → dashboard
-- [ ] Boletas pendientes, emitidas, historial, clientes, saldos y usuarios sin error 500
-- [ ] Boleta de prueba en beta con XML/CDR; nota de crédito
-- [ ] Logs de `altoque_scheduler` / `altoque_queue` sin excepciones
-- [ ] Probar en celular (360/390 px)
+Checklist de la **fase 1** (sin dominio):
 
-Verificar que los demás proyectos siguen vivos:
+- [ ] `docker exec altoque_app php -v` → 8.5.13
+- [ ] `migrate:status` → todas las migraciones *Ran*
+- [ ] `login=200` en el smoke test HTTP temporal del paso 7b
+- [ ] `ADMIN_OK` y conteos de users/clientes/transacciones del paso 7b
+- [ ] Logs de `altoque_scheduler` / `altoque_queue` sin excepciones
+- [ ] `jemigra_bd` y los demás contenedores siguen intactos
+
+Checklist de la **fase 2** (cuando se active nginx/dominio/SSL): certificado válido, login por navegador, boletas/historial/clientes/saldos/usuarios sin 500, boleta de prueba en beta y vista móvil.
+
+Verificar que los demás proyectos siguen vivos (fase 1: sin `curl` a dominios):
 
 ```bash
 DBCTR=c6600299f82a_jemigra_db
 docker ps --format '{{.Names}}\t{{.Status}}\t{{.Image}}'
-for u in https://jemigra.com https://bar.jemigra.com https://www.bytsolution.com; do
-  curl -sS -o /dev/null -w "$u %{http_code}\n" "$u"
-done
 read -s -p 'Contraseña root de MySQL: ' P; echo
 docker exec -i -e MYSQL_PWD="$P" "$DBCTR" mysql -uroot -e 'SHOW DATABASES;'   # jemigra_bd debe seguir ahí
 unset P
+```
+
+Solo en la fase 2, después del paso 8:
+
+```bash
+for u in https://jemigra.com https://bar.jemigra.com https://www.bytsolution.com; do
+  curl -sS -o /dev/null -w "$u %{http_code}\n" "$u"
+done
 ```
 
 Logs si algo falla:
