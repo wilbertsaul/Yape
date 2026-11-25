@@ -2,9 +2,11 @@
 # No se deriva de bar_php para no afectar a los demás proyectos del VPS.
 FROM php:8.5.13-fpm
 
-# La imagen base ya trae curl, dom, mbstring, openssl, zlib, libxml, sqlite y sodium habilitado.
+# La imagen base ya trae curl, dom, mbstring, openssl, zlib, libxml, sqlite, sodium
+# y Zend OPcache habilitado (en PHP 8.5 OPcache está en el core: NO se instala con
+# docker-php-ext-install, porque falla con "cp: cannot stat 'modules/*'").
 # Se añaden: MySQL, SOAP (SUNAT/greenter), ZIP (reconstrucción de boletas),
-# opcache, bcmath, intl y gd (paridad con el entorno anterior).
+# bcmath, intl y gd (paridad con el entorno anterior).
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       libxml2-dev \
@@ -15,7 +17,7 @@ RUN apt-get update \
       libfreetype-dev \
  && docker-php-ext-configure gd --with-jpeg --with-freetype \
  && docker-php-ext-install -j"$(nproc)" \
-      pdo_mysql mysqli soap opcache bcmath intl zip gd \
+      pdo_mysql mysqli soap bcmath intl zip gd \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /var/www/AlToque

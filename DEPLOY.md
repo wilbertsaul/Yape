@@ -154,10 +154,10 @@ docker build -t altoque_php:8.5.13 -f /var/www/AlToque/docker/Dockerfile /var/ww
 docker tag altoque_php:8.5.13 altoque_php
 
 docker run --rm altoque_php php -v
-docker run --rm altoque_php php -m | grep -E '^(soap|pdo_mysql|mysqli|zip|opcache|sodium|bcmath|intl|gd)$'
+docker run --rm altoque_php php -m | grep -Ei '^(soap|pdo_mysql|mysqli|zip|sodium|bcmath|intl|gd|Zend OPcache)$'
 ```
 
-`php -v` debe imprimir **8.5.13** y el `grep` debe listar todas las extensiones. Si falta alguna, **no continuar**.
+`php -v` debe imprimir **8.5.13** y el `grep` debe listar las 9 entradas. **OPcache aparece como `Zend OPcache`**: en PHP 8.5 está compilado en el core y viene activo en la imagen oficial, por lo que **no se incluye en `docker-php-ext-install`** (intentarlo produce `cp: cannot stat 'modules/*'`). Si falta alguna entrada, **no continuar**.
 
 ## 4. Validación en contenedor temporal (no toca producción)
 
